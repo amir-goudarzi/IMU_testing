@@ -1,1 +1,1 @@
-# SSPT_IMU
+# Self-Supervised Pre-training for Inertial Movement Unit (IMU)
