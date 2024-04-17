@@ -1,3 +1,7 @@
+'''
+Codebase from https://medium.com/@zhonghong9998/exploring-self-supervised-learning-training-without-labeled-data-6e1a47dc5876
+'''
+
 import torch
 import torchvision.transforms as transforms
 from src.data.epic_loader_ssl import EpicDatasetSSL
@@ -6,6 +10,9 @@ from torch.utils.data import DataLoader
 # Load a pre-trained CNN model
 model = torch.hub.load('pytorch/vision', 'resnet18', pretrained=True)
 model.eval()
+
+#TODO: Implement resnet feature extraction
+#TODO: Implement the SSL pipeline
 
 # Define a data transformation
 transform = transforms.Compose([transforms.Resize((224, 224)),
