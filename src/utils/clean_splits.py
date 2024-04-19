@@ -1,3 +1,7 @@
+'''
+File originally created to generate new splits when some files are missing from the original one.
+'''
+
 import pandas as pd
 import os
 

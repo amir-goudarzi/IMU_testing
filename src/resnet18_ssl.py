@@ -4,7 +4,7 @@ Codebase from https://medium.com/@zhonghong9998/exploring-self-supervised-learni
 
 import torch
 import torchvision.transforms as transforms
-from src.data.epic_loader_ssl import EpicDatasetSSL
+from src.data.epic_dataset_ssl import EpicDatasetSSL
 from torch.utils.data import DataLoader
 
 # Load a pre-trained CNN model
