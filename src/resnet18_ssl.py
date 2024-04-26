@@ -4,30 +4,52 @@ Codebase from https://medium.com/@zhonghong9998/exploring-self-supervised-learni
 
 import torch
 import torchvision.transforms as transforms
-from src.data.epic_dataset_ssl import EpicDatasetSSL
+from data.epic_dataset_ssl import EpicDatasetSSL
 from torch.utils.data import DataLoader
-
-# Load a pre-trained CNN model
-model = torch.hub.load('pytorch/vision', 'resnet18', pretrained=True)
-model.eval()
+import os
 
 #TODO: Implement resnet feature extraction
 #TODO: Implement the SSL pipeline
 
-# Define a data transformation
-transform = transforms.Compose([transforms.Resize((224, 224)),
-                                transforms.ToTensor(),
-                                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+root_dir = os.path.join('/data', 'EPIC-KITCHENS')
+annotations_dir = os.path.join('data', 'annotations')
+train = True
+filename_training = 'EPIC_100_train_clean.pkl'
+def dataloader(root_dir, annotations_dir, filename, train=True):
+    data = EpicDatasetSSL(
+        src_dir=root_dir,
+        annotations=annotations_dir,
+        filename=filename
+        )
 
-# Load a dataset (e.g., ImageNet) without labels
-dataset = EpicDatasetSSL(data, transform=transform)
+    # Create a data loader
+    loader = DataLoader(data, batch_size=32, shuffle=train)
 
-# Create a data loader
-data_loader = DataLoader(dataset, batch_size=64, shuffle=True)
+    return loader
 
-# Feature extraction
-for batch in data_loader:
-    images, _ = batch
-    with torch.no_grad():
-        features = model(images)
-    # Features can now be used for downstream tasks
+def pretrain(model, train_loader, num_epochs=10):
+    # Define the optimizer
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+    # Define the loss function
+    criterion = torch.nn.CrossEntropyLoss()
+
+    for epoch in range(num_epochs):
+        model.train()
+        for idx, batch in enumerate(train_loader):
+            images, labels = batch
+            images.cuda()
+            labels.cuda()
+
+            # Forward pass
+            outputs = model(images)
+            prova = None
+
+
+if __name__ == '__main__':
+    train_loader = dataloader(root_dir, annotations_dir, filename_training)
+    model = torch.hub.load('pytorch/vision', 'resnet18', pretrained=True)
+    model.eval()
+    model.cuda()
+
+    pretrain(model, train_loader, num_epochs=10)

@@ -28,5 +28,6 @@ if __name__ == '__main__':
     root_dir = os.path.join('/data', 'EPIC-KITCHENS')
     annotations_dir = os.path.join('data', 'annotations')
     train = False
+    # TODO: create cleared annotations for the validation set.
     clean_split(root_dir, annotations_dir, train)
         

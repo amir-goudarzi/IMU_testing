@@ -34,7 +34,8 @@ class EpicDatasetSSL(Dataset):
     def __init__(self,
             src_dir: os.PathLike,
             annotations: os.PathLike,
-            window_size,
+            filename: str,
+            window_size=2.5,
             cache_size=math.inf,
             n_fft=128,
             hop_length=4,
@@ -45,11 +46,16 @@ class EpicDatasetSSL(Dataset):
             use_cache=False
             ):
         self.src_dir = src_dir
-        self.annotations = self.__load_annotations(annotations)
+        self.annotations = self.__load_annotations__(os.path.join(annotations, filename))
         self.window_size = window_size
         self.cache_size = cache_size
         self.cache = {}  # Initialize an empty cache
         self.cache_index = 0  # Index to keep track of the current cache position
+        self.sampling_rate_accl = sampling_rate_accl
+        self.sampling_rate_gyro = sampling_rate_gyro
+        self.downsampling_rate_accl = downsampling_rate_accl
+        self.downsampling_rate_gyro = downsampling_rate_gyro
+        self.use_cache = use_cache
 
         self.transforms_accl = torch.nn.Sequential(
             T.Resample(sampling_rate_accl, downsampling_rate_accl),
@@ -87,25 +93,30 @@ class EpicDatasetSSL(Dataset):
         pid, vid = action['participant_id'], action['video_id']
         start, stop = action['start_timestamp'], action['stop_timestamp']
 
-        x = None
-
-        if not self.cache[vid]:
-            self.cache[vid] = self.__load_data__(vid)
-        else:
-            x = self.cache[vid]
+        if vid not in self.cache:
+            self.cache[vid] = self.__load_data__(pid, vid)
         
-        accl = self.__get_windowed_data__(start, stop, x['accl'])
-        gyro = self.__get_windowed_data__(start, stop, x['gyro'])
+        '''
+        Idxs:
+        0: seconds
+        1: acclX
+        2: acclY
+        3: acclZ
+        '''
+        accl = self.__get_windowed_data__(start, stop, self.cache[vid]['accl'])
+        gyro = self.__get_windowed_data__(start, stop, self.cache[vid]['gyro'], is_accl=False)
 
         accl = self.transforms_accl(accl)
         gyro = self.transforms_gyro(gyro)
 
+        # FIXME: Actual shape is (3, 65, 63)
         accl = normalize_tensor(accl)
+        # FIXME: Actual shape is (3, 65, 126)
         gyro = normalize_tensor(gyro)
 
-        x = torch.cat((accl, gyro), dim=0)
+        # x = torch.cat((accl, gyro), dim=0)
 
-        return x
+        return (accl, gyro)
 
 
     def set_use_cache(self, use_cache):
@@ -119,7 +130,7 @@ class EpicDatasetSSL(Dataset):
     def __load_annotations__(self, annotations: os.PathLike):
         assert os.path.isfile(annotations), f'The file {annotations} does not exist'
 
-        data = pd.read_pickle(self.annotations)
+        data = pd.read_pickle(annotations)
         data = data.dropna()
         data = data.reset_index(drop=True)
         return data
@@ -127,15 +138,23 @@ class EpicDatasetSSL(Dataset):
     def __load_data__(self, pid:str, vid: str):
         subdir = os.path.join(pid, 'meta_data')
         accl, gyro = load_data(src_dir=os.path.join(self.src_dir, subdir), video_id=vid, is_csv=False)
-        #[ ] Check if the data is loaded correctly
-        accl = torch.tensor(accl.values, dtype=torch.float32)
-        gyro = torch.tensor(gyro.values, dtype=torch.float32)
+        #[ ] Check if the data are loaded correctly
+        accl = torch.tensor(accl.T.values, dtype=torch.float32)
+        gyro = torch.tensor(gyro.T.values, dtype=torch.float32)
         return {'accl': accl, 'gyro': gyro, 'last_idx': 0}
     
-    def __get_windowed_data__(self, start, stop, data):
+    def __get_windowed_data__(self, start, stop, data, is_accl=True):
         center = center_timestamp(start, stop)
-        start = center - self.window_size // 2
-        stop = center + self.window_size // 2
+        wsize = (self.window_size * 1000.0)
+        start = center - wsize // 2
+        stop = center + wsize // 2
         # [ ] Check if the shape is correctly returned
-        window = data[start:stop, :]
-        return window
+        geq, leq = data[0] >= start, data[0] <= stop
+
+        signal = data[1:, torch.where(geq & leq)[0]]
+        signal = cut_and_pad(
+            signal=signal,
+            sampling_rate=self.sampling_rate_accl if is_accl else self.sampling_rate_gyro,
+            seconds=self.window_size
+            )
+        return signal

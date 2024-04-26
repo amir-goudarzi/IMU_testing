@@ -25,12 +25,12 @@ def load_data(src_dir: os.PathLike, video_id: str, is_csv=True):
     df_accl = None
     df_gyro = None
 
-    if is_csv:
-        df_accl = pd.read_csv(src_dir, video_id + '-accl.csv').dropna().reset_index(drop=True)
-        df_gyro = pd.read_csv(src_dir, video_id + '-gyro.csv').dropna().reset_index(drop=True)
-    else:
-        df_accl = pd.read_pickle(src_dir, video_id + '-accl.pkl').dropna().reset_index(drop=True)
-        df_gyro = pd.read_pickle(src_dir, video_id + '-gyro.pkl').dropna().reset_index(drop=True)
+    # if is_csv:
+    df_accl = pd.read_csv(os.path.join(src_dir, video_id + '-accl.csv')).dropna().reset_index(drop=True)
+    df_gyro = pd.read_csv(os.path.join(src_dir, video_id + '-gyro.csv')).dropna().reset_index(drop=True)
+    # else:
+    #     df_accl = pd.read_pickle(src_dir, video_id + '-accl.pkl').dropna().reset_index(drop=True)
+    #     df_gyro = pd.read_pickle(src_dir, video_id + '-gyro.pkl').dropna().reset_index(drop=True)
 
     return df_accl, df_gyro
 
