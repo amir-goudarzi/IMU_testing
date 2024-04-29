@@ -17,7 +17,7 @@ as the function load_data only returns accelerometer data
 
 TODO: Check the implementation of this dataloader
 '''
-class WearDataset(Dataset):
+class WearDatasetSSL(Dataset):
     def __init__(self,
             src_dir: os.PathLike,
             annotations: os.PathLike,

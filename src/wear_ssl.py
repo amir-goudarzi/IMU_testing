@@ -1,5 +1,5 @@
 import math
-from data.wear_dataset import WearDataset
+from src.data.wear_dataset_ssl import WearDatasetSSL
 
 import os
 
@@ -19,7 +19,7 @@ if __name__ == '__main__':
     inertial_dir = os.path.join(root_dir, 'raw', 'inertial')
     annotations_file = 'wear_split_1.json'
 
-    dataset = WearDataset(
+    dataset = WearDatasetSSL(
         src_dir=inertial_dir,
         annotations=os.path.join(annotations_dir, annotations_file),
         window_size=10,

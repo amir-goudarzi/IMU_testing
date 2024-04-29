@@ -4,7 +4,7 @@ import os
 import math
 
 import torch, torchaudio
-from torchvision.transforms import Compose
+from torchvision.transforms import Compose, Resize
 import torchaudio.transforms as T
 from torch.utils.data import Dataset
 
@@ -40,13 +40,13 @@ class EpicDatasetSSL(Dataset):
             n_fft=128,
             hop_length=4,
             sampling_rate_accl=200,
-            sampling_rate_gyro=400,
+            sampling_rate_gyro=200,
             downsampling_rate_accl=100,
-            downsampling_rate_gyro=200,
+            downsampling_rate_gyro=100,
+            overlap_in_s=None,
             use_cache=False
             ):
         self.src_dir = src_dir
-        self.annotations = self.__load_annotations__(os.path.join(annotations, filename))
         self.window_size = window_size
         self.cache_size = cache_size
         self.cache = {}  # Initialize an empty cache
@@ -56,9 +56,14 @@ class EpicDatasetSSL(Dataset):
         self.downsampling_rate_accl = downsampling_rate_accl
         self.downsampling_rate_gyro = downsampling_rate_gyro
         self.use_cache = use_cache
+        self.overlap_in_s = window_size / 2 if overlap_in_s is None else overlap_in_s
+
+        self.annotations = self.__create_annotation_windows__(
+            self.__load_annotations__(os.path.join(annotations, filename))
+            )
 
         self.transforms_accl = torch.nn.Sequential(
-            T.Resample(sampling_rate_accl, downsampling_rate_accl),
+            # T.Resample(sampling_rate_accl, downsampling_rate_accl),
             T.Spectrogram(
                 n_fft=n_fft,
                 hop_length=hop_length,
@@ -67,11 +72,12 @@ class EpicDatasetSSL(Dataset):
                 power=2.0,
                 normalized=True
                 ),
-            T.AmplitudeToDB()
+            T.AmplitudeToDB(),
+            Resize((64, 64))
         )
 
         self.transforms_gyro = torch.nn.Sequential(
-            T.Resample(sampling_rate_gyro, downsampling_rate_gyro),
+            # T.Resample(sampling_rate_gyro, downsampling_rate_gyro),
             T.Spectrogram(
                 n_fft=n_fft,
                 hop_length=hop_length,
@@ -80,7 +86,8 @@ class EpicDatasetSSL(Dataset):
                 power=2.0,
                 normalized=True
                 ),
-            T.AmplitudeToDB()
+            T.AmplitudeToDB(),
+            Resize((64, 64))
         )
 
         
@@ -90,12 +97,8 @@ class EpicDatasetSSL(Dataset):
 
     def __getitem__(self, index):
         action = self.annotations.iloc[index, :]
-        pid, vid = action['participant_id'], action['video_id']
-        start, stop = action['start_timestamp'], action['stop_timestamp']
+        vid, start_s, stop_s = action['video_id'], action['start_s'], action['stop_s']
 
-        if vid not in self.cache:
-            self.cache[vid] = self.__load_data__(pid, vid)
-        
         '''
         Idxs:
         0: seconds
@@ -103,16 +106,15 @@ class EpicDatasetSSL(Dataset):
         2: acclY
         3: acclZ
         '''
-        accl = self.__get_windowed_data__(start, stop, self.cache[vid]['accl'])
-        gyro = self.__get_windowed_data__(start, stop, self.cache[vid]['gyro'], is_accl=False)
+        accl, gyro = self.__load_data__(vid, start_s, stop_s)
 
         accl = self.transforms_accl(accl)
         gyro = self.transforms_gyro(gyro)
 
-        # FIXME: Actual shape is (3, 65, 63)
-        accl = normalize_tensor(accl)
-        # FIXME: Actual shape is (3, 65, 126)
-        gyro = normalize_tensor(gyro)
+        # # FIXME: Actual shape is (3, 65, 63)
+        # accl = normalize_tensor(accl)
+        # # FIXME: Actual shape is (3, 65, 126)
+        # gyro = normalize_tensor(gyro)
 
         # x = torch.cat((accl, gyro), dim=0)
 
@@ -135,26 +137,74 @@ class EpicDatasetSSL(Dataset):
         data = data.reset_index(drop=True)
         return data
 
-    def __load_data__(self, pid:str, vid: str):
-        subdir = os.path.join(pid, 'meta_data')
-        accl, gyro = load_data(src_dir=os.path.join(self.src_dir, subdir), video_id=vid, is_csv=False)
-        #[ ] Check if the data are loaded correctly
-        accl = torch.tensor(accl.T.values, dtype=torch.float32)
-        gyro = torch.tensor(gyro.T.values, dtype=torch.float32)
-        return {'accl': accl, 'gyro': gyro, 'last_idx': 0}
-    
-    def __get_windowed_data__(self, start, stop, data, is_accl=True):
-        center = center_timestamp(start, stop)
-        wsize = (self.window_size * 1000.0)
-        start = center - wsize // 2
-        stop = center + wsize // 2
-        # [ ] Check if the shape is correctly returned
-        geq, leq = data[0] >= start, data[0] <= stop
 
-        signal = data[1:, torch.where(geq & leq)[0]]
-        signal = cut_and_pad(
-            signal=signal,
-            sampling_rate=self.sampling_rate_accl if is_accl else self.sampling_rate_gyro,
-            seconds=self.window_size
-            )
-        return signal
+    def __load_data__(self, vid: str, start_s: float, stop_s: float) -> tuple[torch.Tensor, torch.Tensor]:
+        accl = self.cache[vid]['accl'].to_numpy().T
+        gyro = self.cache[vid]['gyro'].to_numpy().T
+
+        start_s, stop_s = start_s * 1000.0, stop_s * 1000.0
+        idx_accl = np.where(np.logical_and(accl[0] >= start_s, accl[0] <= stop_s))[0]
+        idx_gyro = np.where(np.logical_and(gyro[0] >= start_s, gyro[0] <= stop_s))[0]
+
+        window_accl = cut_and_pad(
+            torch.tensor(accl[1:, idx_accl], dtype=torch.float32), 
+            self.sampling_rate_accl, self.window_size)
+        window_gyro = cut_and_pad(
+            torch.tensor(gyro[1:, idx_gyro], dtype=torch.float32), 
+            self.sampling_rate_gyro, self.window_size)
+
+        return window_accl, window_gyro
+    
+
+    def __align_data__(self, accl: pd.DataFrame, gyro: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        # TODO: Implement the alignment of the data
+
+        idx_accl = np.where(pd.Series(accl['Milliseconds']).diff().round().to_numpy() >= (1 / self.sampling_rate_accl))[0]
+        idx_gyro = np.where(pd.Series(gyro['Milliseconds']).diff().round().to_numpy() >= (1 / self.sampling_rate_gyro))[0]
+
+        accl = accl.iloc[idx_accl, :]
+        gyro = gyro.iloc[idx_gyro, :]
+
+        last_ts = min(accl['Milliseconds'].iloc[-1], gyro['Milliseconds'].iloc[-1])
+        first_ts = max(accl['Milliseconds'].iloc[0], gyro['Milliseconds'].iloc[0])
+
+        accl = accl[(accl['Milliseconds'] >= first_ts) & (accl['Milliseconds'] <= last_ts)]
+        gyro = gyro[(gyro['Milliseconds'] >= first_ts) & (gyro['Milliseconds'] <= last_ts)]
+        
+        return accl, gyro, first_ts / 1000.0, last_ts / 1000.0
+    
+
+    def __create_annotation_windows__(self, annotations: pd.DataFrame) -> pd.DataFrame:
+
+        distinct_videos = annotations['video_id'].unique()
+
+        df_ssl_epic = pd.DataFrame(columns=[
+            'video_id',
+            'start_s',
+            'stop_s'
+        ])
+
+        for vid in distinct_videos:
+            pid = vid.split('_')[0]
+            filepath = os.path.join(self.src_dir, pid, 'meta_data')
+            accl, gyro = load_data(filepath, video_id=vid, is_csv=True)
+            accl, gyro, first_ts, last_ts = self.__align_data__(accl, gyro)
+            
+            self.cache[vid] = {
+                'accl': accl,
+                'gyro': gyro
+            }
+
+            duration = last_ts - first_ts
+            n_windows = int((duration * (self.window_size / self.overlap_in_s)) / self.window_size)
+
+            print(f'Video: {vid} - Duration: {duration} - Windows: {n_windows}')
+            for j in range(n_windows):
+                start = j * self.overlap_in_s
+                stop = start + self.window_size
+
+                df_ssl_epic.loc[len(df_ssl_epic.index)] = [vid, start, stop]
+
+        print(len(df_ssl_epic))
+        return df_ssl_epic
+    
