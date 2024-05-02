@@ -1,3 +1,0 @@
-[submodule "submodules/audio-mae"]
-	path = submodules/audio-mae
-	url = https://github.com/facebookresearch/AudioMAE.git
