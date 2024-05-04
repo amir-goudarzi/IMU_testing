@@ -4,9 +4,9 @@ import os
 import math
 
 import torch, torchaudio
-from torchvision.transforms import Compose, Resize
+from torchvision.transforms import Compose, Resize, Normalize
 import torchaudio.transforms as T
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 from features.transforms import normalize_tensor, cut_and_pad
 from utils.utils import load_data, center_timestamp
@@ -73,7 +73,11 @@ class EpicDatasetSSL(Dataset):
                 normalized=True
                 ),
             T.AmplitudeToDB(),
-            Resize((64, 64))
+            Resize((64, 64)),
+            Normalize(
+                mean=[-24.0039, -28.0563, -27.5905],
+                std=[17.0473, 14.1716, 15.3116]
+            )
         )
 
         self.transforms_gyro = torch.nn.Sequential(
@@ -87,7 +91,11 @@ class EpicDatasetSSL(Dataset):
                 normalized=True
                 ),
             T.AmplitudeToDB(),
-            Resize((64, 64))
+            Resize((64, 64)),
+            Normalize(
+                mean=[-42.7268, -42.6332, -43.2766],
+                std=[13.3456, 12.9086, 11.9457]
+            )
         )
 
         
@@ -116,9 +124,9 @@ class EpicDatasetSSL(Dataset):
         # # FIXME: Actual shape is (3, 65, 126)
         # gyro = normalize_tensor(gyro)
 
-        # x = torch.cat((accl, gyro), dim=0)
+        x = torch.cat((accl, gyro), dim=0)
 
-        return (accl, gyro)
+        return x
 
 
     def set_use_cache(self, use_cache):
@@ -208,3 +216,46 @@ class EpicDatasetSSL(Dataset):
         print(len(df_ssl_epic))
         return df_ssl_epic
     
+
+def load_epic_ssl(
+    src_dir: os.PathLike,
+    annotations: os.PathLike,
+    filename: str,
+    window_size=2.5,
+    cache_size=math.inf,
+    n_fft=128,
+    hop_length=4,
+    sampling_rate_accl=200,
+    sampling_rate_gyro=200,
+    downsampling_rate_accl=100,
+    downsampling_rate_gyro=100,
+    overlap_in_s=None,
+    use_cache=False,
+    batch_size=32,
+    train=True,
+    device='cpu'
+    ):
+    dataset = EpicDatasetSSL(
+        src_dir=src_dir,
+        annotations=annotations,
+        filename=filename,
+        window_size=window_size,
+        cache_size=cache_size,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        sampling_rate_accl=sampling_rate_accl,
+        sampling_rate_gyro=sampling_rate_gyro,
+        downsampling_rate_accl=downsampling_rate_accl,
+        downsampling_rate_gyro=downsampling_rate_gyro,
+        overlap_in_s=overlap_in_s,
+        use_cache=use_cache
+        )
+
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=train,
+        num_workers=4
+        )
+
+    return loader

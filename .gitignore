@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 .vscode/
-
+output_dir/
 # C extensions
 *.so
 

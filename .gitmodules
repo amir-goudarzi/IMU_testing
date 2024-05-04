@@ -1,0 +1,3 @@
+[submodule "src/submodules/AudioMAE"]
+	path = src/submodules/AudioMAE
+	url = https://github.com/facebookresearch/AudioMAE.git
