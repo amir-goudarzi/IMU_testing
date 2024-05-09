@@ -4,8 +4,6 @@ from data.epic_dataset_ssl import EpicDatasetSSL
 from torch.utils.data import DataLoader
 import os
 
-#TODO: Implement resnet feature extraction
-#TODO: Implement the SSL pipeline
 
 root_dir = os.path.join('/data', 'EPIC-KITCHENS')
 annotations_dir = os.path.join('data', 'annotations')

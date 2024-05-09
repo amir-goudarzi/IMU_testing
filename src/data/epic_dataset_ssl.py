@@ -13,7 +13,7 @@ from utils.utils import load_data, center_timestamp
 
 '''
 
-TODO: The purpose of this class is to create a self-supervised learning dataset for the EPIC-KITCHENS dataset.
+The purpose of this class is to create a self-supervised learning dataset for the EPIC-KITCHENS dataset.
 To do so, it is needed to keep track of the last index scanned for each file in the cache. This is necessary
 to avoid loading the same file multiple times.
 
@@ -25,7 +25,7 @@ with the following keys:
 
 Eventually, it is possible to set the use_cache attribute to True to store the data in the cache.
 
-# TODO (Optional): Implement an overlapping window strategy to increase the number of samples.
+#(Optional): Implement an overlapping window strategy to increase the number of samples.
 
 '''
 
@@ -119,11 +119,6 @@ class EpicDatasetSSL(Dataset):
         accl = self.transforms_accl(accl)
         gyro = self.transforms_gyro(gyro)
 
-        # # FIXME: Actual shape is (3, 65, 63)
-        # accl = normalize_tensor(accl)
-        # # FIXME: Actual shape is (3, 65, 126)
-        # gyro = normalize_tensor(gyro)
-
         x = torch.cat((accl, gyro), dim=0)
 
         return x
@@ -165,10 +160,9 @@ class EpicDatasetSSL(Dataset):
     
 
     def __align_data__(self, accl: pd.DataFrame, gyro: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-        # TODO: Implement the alignment of the data
 
-        idx_accl = np.where(pd.Series(accl['Milliseconds']).diff().round().to_numpy() >= (1 / self.sampling_rate_accl))[0]
-        idx_gyro = np.where(pd.Series(gyro['Milliseconds']).diff().round().to_numpy() >= (1 / self.sampling_rate_gyro))[0]
+        idx_accl = np.where(pd.Series(accl['Milliseconds']).diff().round().to_numpy() >= (1 / self.sampling_rate_accl * 1000))[0]
+        idx_gyro = np.where(pd.Series(gyro['Milliseconds']).diff().round().to_numpy() >= (1 / self.sampling_rate_gyro * 1000))[0]
 
         accl = accl.iloc[idx_accl, :]
         gyro = gyro.iloc[idx_gyro, :]

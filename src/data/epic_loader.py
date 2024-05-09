@@ -70,7 +70,6 @@ class EpicKitchens100(Dataset):
                 • GyroZ: The angular velocity along the z-axis.
             • sampling_rate: The sampling rate of the WAV file.
         '''
-        # TODO: Load the WAV file and its label
         df_accl, df_gyro = pd.read_csv(filename + '-accl.csv'), pd.read_csv(filename + '-gyro.csv')
         seconds = df_accl['Milliseconds'] / 1000.0
         seconds.name = "seconds"

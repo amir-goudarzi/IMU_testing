@@ -104,7 +104,7 @@ def datetime_to_milliseconds(timestamp: str):
     return (hours * 3600 + minutes * 60 + int(seconds)) * 1000 + int(micro)
 
 
-def center_timestamp(start: str, stop: str):
+def center_timestamp(start: str, stop: str, mode='datetime'):
     '''
     Center the timestamps.
     Args:
@@ -112,7 +112,13 @@ def center_timestamp(start: str, stop: str):
         • stop: str. The stop timestamp.
     Returns: A tuple of two strings. The centered timestamps.
     '''
-    start_ms = datetime_to_milliseconds(start)
-    stop_ms = datetime_to_milliseconds(stop)
+    start_ms = stop_ms = 0
+
+    if mode == 'datetime':
+        start_ms = datetime_to_milliseconds(start)
+        stop_ms = datetime_to_milliseconds(stop)
+    else:
+        start_ms = start * 1000
+        stop_ms = stop * 1000
     center = (start_ms + stop_ms) // 2
     return center

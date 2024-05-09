@@ -100,7 +100,7 @@ class WearDatasetSSL(Dataset):
 
     def __load_data__(self, subject: str) -> dict:
         data = pd.read_csv(os.path.join(self.src_dir, f'{subject}.csv'))
-        #[ ] Check if the data are loaded correctly
+        #[x] Check if the data are loaded correctly
         right_arm = torch.tensor(data[['right_arm_acc_x', 'right_arm_acc_y', 'right_arm_acc_z']].values.T, dtype=torch.float32)
         left_arm = torch.tensor(data[['left_arm_acc_x', 'left_arm_acc_y', 'left_arm_acc_z']].values.T, dtype=torch.float32)
         right_leg = torch.tensor(data[['right_leg_acc_x', 'right_leg_acc_y', 'right_leg_acc_z']].values.T, dtype=torch.float32)
@@ -115,7 +115,7 @@ class WearDatasetSSL(Dataset):
     def __get_windowed_data__(self, start, stop, data):
         start = start * self.sampling_rate
         stop = stop * self.sampling_rate
-        # [ ] Check if the shape is correctly returned
+        # [x] Check if the shape is correctly returned
         window = data[:, start:stop]
         
         assert not torch.isnan(window).any(), "ops, there is a NaN in the windowed data!"
