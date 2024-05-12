@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 .vscode/
 output_dir/
+reports/experiments/audio_mae/epic100_exp/*/checkpoint*
 # C extensions
 *.so
 

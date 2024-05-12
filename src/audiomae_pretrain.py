@@ -34,7 +34,7 @@ from submodules.AudioMAE.engine_pretrain import train_one_epoch
 from submodules.AudioMAE.models_mae import MaskedAutoencoderViT
 from data.epic_dataset_ssl import EpicDatasetSSL, load_epic_ssl
 
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+# DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def get_args_parser():
@@ -187,7 +187,7 @@ def main(args):
     root_dir = os.path.join('/data', 'EPIC-KITCHENS')
     annotations_dir = os.path.join('data', 'annotations')
     train = True
-    filename_training = 'EPIC_100_train_clean.pkl'
+    filename_training = 'EPIC_100_train_clean_split.pkl'
     DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(DEVICE)
 
@@ -195,6 +195,8 @@ def main(args):
         src_dir=root_dir,
         annotations=annotations_dir,
         filename=filename_training,
+        transforms_accl=transforms.Normalize(mean=[-24.0869, -28.0400, -27.4174], std=[17.0260, 14.2892, 15.4472]),
+        transforms_gyro=transforms.Normalize(mean=[-42.8106, -42.6817, -43.3577], std=[13.2689, 12.8669, 11.9387]),
     )
     
     if True:  # args.distributed:

@@ -44,7 +44,9 @@ class EpicDatasetSSL(Dataset):
             downsampling_rate_accl=100,
             downsampling_rate_gyro=100,
             overlap_in_s=None,
-            use_cache=False
+            use_cache=False,
+            transforms_accl=None,
+            transforms_gyro=None
             ):
         self.src_dir = src_dir
         self.window_size = window_size
@@ -74,10 +76,6 @@ class EpicDatasetSSL(Dataset):
                 ),
             T.AmplitudeToDB(),
             Resize((64, 64)),
-            Normalize(
-                mean=[-24.0039, -28.0563, -27.5905],
-                std=[17.0473, 14.1716, 15.3116]
-            )
         )
 
         self.transforms_gyro = torch.nn.Sequential(
@@ -92,13 +90,14 @@ class EpicDatasetSSL(Dataset):
                 ),
             T.AmplitudeToDB(),
             Resize((64, 64)),
-            Normalize(
-                mean=[-42.7268, -42.6332, -43.2766],
-                std=[13.3456, 12.9086, 11.9457]
-            )
         )
 
-        
+        if transforms_accl is not None:
+            self.transforms_accl.append(transforms_accl)
+        if transforms_gyro is not None:
+            self.transforms_gyro.append(transforms_gyro)
+
+
     def __len__(self):
         return len(self.annotations)
 
@@ -136,8 +135,7 @@ class EpicDatasetSSL(Dataset):
         assert os.path.isfile(annotations), f'The file {annotations} does not exist'
 
         data = pd.read_pickle(annotations)
-        data = data.dropna()
-        data = data.reset_index(drop=True)
+        
         return data
 
 
