@@ -1,4 +1,4 @@
-# Annotations cleaning
+# Annotations cleaning
 
 `EPIC_100_train.pkl` doesn't cover all IMU videos entirely, and `EPIC_100_validation.pkl` does not cover them at all. Then, we faced a problem with the sampling rate which is not 200Hz at the start or the end. \ 
 To solve the previous issues, the following steps has been done:
@@ -9,3 +9,6 @@ To solve the previous issues, the following steps has been done:
     2. We have fileld each split **for each participant** as long as the previous criterion has respected;
     3. The remaining participants have been manually reassigned to each split.
  
+# To-do list
+[ ] Are the 89 labels in each split? \
+[ ] Do the splits respect 70/10/15% rule?

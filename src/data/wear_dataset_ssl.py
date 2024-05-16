@@ -21,8 +21,9 @@ class WearDatasetSSL(Dataset):
     def __init__(self,
             src_dir: os.PathLike,
             annotations: os.PathLike,
-            window_size: 10,
-            overlap_in_s: 5,
+            filename: str,
+            window_size=10,
+            overlap_in_s=None,
             cache_size=math.inf,
             n_fft=128,
             hop_length=4,
@@ -36,10 +37,9 @@ class WearDatasetSSL(Dataset):
         self.cache_size = cache_size
         self.sampling_rate = sampling_rate
         self.downsampling_rate = downsampling_rate
-        self.overlap_in_s = overlap_in_s
+        self.overlap_in_s = window_size / 2 if overlap_in_s is None else overlap_in_s
         self.cache = {}  # Initialize an empty cache
-        self.cache_index = 0  # Index to keep track of the current cache position
-        self.annotations = self.__load_annotations__(annotations)
+        self.annotations = self.__load_annotations__(os.path.join(annotations, filename))
         self.use_cache = use_cache
 
         self.transforms = torch.nn.Sequential(
@@ -51,7 +51,7 @@ class WearDatasetSSL(Dataset):
                 pad_mode="reflect",
                 power=2.0,
                 normalized=True
-                ).float(),
+                ),
             T.AmplitudeToDB(),
             Resize((64, 64))
         )
@@ -76,8 +76,6 @@ class WearDatasetSSL(Dataset):
 
         accl = self.transforms(accl)
 
-        # accl = normalize_tensor(accl)
-
         return accl
 
 
@@ -92,14 +90,14 @@ class WearDatasetSSL(Dataset):
     def __load_annotations__(self, annotations: os.PathLike):
         assert os.path.isfile(annotations), f'The file {annotations} does not exist'
 
-        data = pd.read_json(annotations)
+        data = pd.read_pickle(annotations)
+        data = data[['sbj_id', 'duration']].drop_duplicates()
         data = self.__create_annotations_windows__(data)
-
         return data
 
 
     def __load_data__(self, subject: str) -> dict:
-        data = pd.read_csv(os.path.join(self.src_dir, f'{subject}.csv'))
+        data = pd.read_csv(os.path.join(self.src_dir, 'raw', 'inertial', f'{subject}.csv'))
         #[x] Check if the data are loaded correctly
         right_arm = torch.tensor(data[['right_arm_acc_x', 'right_arm_acc_y', 'right_arm_acc_z']].values.T, dtype=torch.float32)
         left_arm = torch.tensor(data[['left_arm_acc_x', 'left_arm_acc_y', 'left_arm_acc_z']].values.T, dtype=torch.float32)
@@ -113,8 +111,8 @@ class WearDatasetSSL(Dataset):
     
 
     def __get_windowed_data__(self, start, stop, data):
-        start = start * self.sampling_rate
-        stop = stop * self.sampling_rate
+        start = int(start * self.sampling_rate)
+        stop = int(stop * self.sampling_rate)
         # [x] Check if the shape is correctly returned
         window = data[:, start:stop]
         
@@ -125,15 +123,10 @@ class WearDatasetSSL(Dataset):
     
 
     def __create_annotations_windows__(self, data) -> pd.DataFrame:
-        aux = {}
-
-        for i, row in data.iterrows():
-            
-            if  i.startswith('sbj') and (i not in aux) and (row['database']['subset'] == 'Training'):
-                
-                aux[i] = {
-                    'duration_s': row['database']['duration']
-                }
+        '''
+        data: pd.DataFrame with columns:
+        ['sbj_id', 'duration']
+        '''
 
         df_ssl_wear = pd.DataFrame(columns=[
             'subject',
@@ -141,13 +134,14 @@ class WearDatasetSSL(Dataset):
             'stop_s'
         ])
 
-        for i, row in aux.items():
-            duration = row['duration_s']
+        for i, row in data.iterrows():
+            duration = row['duration']
+            sbj_id = row['sbj_id']
             n_windows = int((duration * (self.window_size / self.overlap_in_s)) / self.window_size)
 
             for j in range(n_windows):
                 start = j * self.overlap_in_s
                 stop = start + self.window_size
 
-                df_ssl_wear.loc[len(df_ssl_wear.index)] = [i, start, stop]
+                df_ssl_wear.loc[len(df_ssl_wear.index)] = [sbj_id, start, stop]
         return df_ssl_wear

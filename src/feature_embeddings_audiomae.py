@@ -23,6 +23,7 @@ import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.utils.tensorboard import SummaryWriter
+import torchvision.transforms as transforms
 
 import timm
 
@@ -116,7 +117,8 @@ def get_args_parser():
                         help='Probability of switching to cutmix when both mixup and cutmix enabled')
     parser.add_argument('--mixup_mode', type=str, default='batch',
                         help='How to apply mixup/cutmix params. Per "batch", "pair", or "elem"')
-
+    parser.add_argument('--mask_ratio', default=0.8, type=float, 
+                        help='Masking ratio (percentage of removed patches).') # 0.75
     # * Finetuning params
     parser.add_argument('--finetune', default='',
                         help='finetune from checkpoint')
@@ -233,7 +235,7 @@ class PatchEmbed_new(nn.Module):
         return x
 
 
-def extract_embeddings(model, dataloader, device):
+def extract_embeddings(model, dataloader, device, args):
     model.eval()
     feature_embeddings = pd.DataFrame(columns=['feature_embeddings', 'target'])
 
@@ -243,6 +245,7 @@ def extract_embeddings(model, dataloader, device):
 
             # output = model(input).last_hidden_state[:, 0].cpu()
             output = model(input, classification=False)
+            target = torch.argmax(target, dim=1)
             for idx, out in enumerate(output.cpu().numpy()):
                 feature_embeddings.loc[len(feature_embeddings)] = [out, target[idx].cpu().numpy()]
             # if target not in feature_embeddings:
@@ -254,7 +257,7 @@ def extract_embeddings(model, dataloader, device):
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     # pkl.dump(feature_embeddings, open(os.path.join(save_path, 'feature_embeddings.pkl'), 'wb'))
-    feature_embeddings.to_pickle(os.path.join(save_path, 'feature_embeddings.pkl'))
+    feature_embeddings.to_pickle(os.path.join(save_path, f'feature_embeddings_mask({args.mask_ratio}).pkl'))
 
 
 def main(args):
@@ -274,12 +277,23 @@ def main(args):
     root_dir = os.path.join('/data', 'EPIC-KITCHENS')
     annotations_dir = os.path.join('data', 'annotations')
     train = True
-    filename_training = 'EPIC_100_train_clean.pkl'
+    filename_training = 'EPIC_100_train_clean_split.pkl'
+    transforms_accl = transforms.Normalize(
+        mean=[-16.9617, -23.7787, -21.7584],
+        std=[16.9230, 15.2566, 16.0062]
+    )
+
+    transforms_gyro = transforms.Normalize(
+        mean=[-39.3884, -39.3591, -40.8935],
+        std=[15.7324, 15.0534, 14.3891]
+    )
 
     dataset_train = EpicDataset(
         src_dir=root_dir,
         annotations=annotations_dir,
-        filename=filename_training
+        filename=filename_training,
+        transforms_accl=transforms_accl,
+        transforms_gyro=transforms_gyro
     )
     
     data_loader_train = torch.utils.data.DataLoader(
@@ -323,21 +337,22 @@ def main(args):
         img_size = (64,64)
         in_chans = 6
         emb_dim = 768
-        if args.model == "vit_small_patch16":
+        patch_size = 8
+        if args.model == f"vit_small_patch{patch_size}":
             emb_dim = 384
         if args.use_custom_patch:
             model.patch_embed = PatchEmbed_new(img_size=img_size,
-                                                  patch_size=16,
+                                                  patch_size=patch_size,
                                                   in_chans=in_chans,
                                                   embed_dim=emb_dim,
                                                   stride=10)
             model.pos_embed = nn.Parameter(torch.zeros(1, 1212 + 1, emb_dim), requires_grad=False)
         else:
             model.patch_embed = PatchEmbed_new(img_size=img_size,
-                                                  patch_size=(16,16),
+                                                  patch_size=patch_size,
                                                   in_chans=in_chans,
                                                   embed_dim=emb_dim,
-                                                  stride=16)
+                                                  stride=patch_size)
             num_patches = model.patch_embed.num_patches
             model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim), requires_grad=False)
 
@@ -411,7 +426,7 @@ def main(args):
     #     print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['mAP']:.4f}")
     #     exit(0)
 
-    feature_embeddings = extract_embeddings(model, data_loader_train, device)
+    feature_embeddings = extract_embeddings(model, data_loader_train, device, args)
 
 if __name__ == '__main__':
     args = get_args_parser()

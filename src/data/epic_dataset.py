@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 import math
-from datetime import timedelta
+import pickle as pkl
 
 import torch, torchaudio
 from torchvision.transforms import Compose, Resize, Normalize
@@ -28,7 +28,8 @@ class EpicDataset(Dataset):
             downsampling_rate_gyro=100,
             use_cache=False,
             transforms_accl=None,
-            transforms_gyro=None
+            transforms_gyro=None,
+            num_classes=89
             ):
         self.src_dir = src_dir
         self.window_size = window_size
@@ -40,8 +41,9 @@ class EpicDataset(Dataset):
         self.downsampling_rate_accl = downsampling_rate_accl
         self.downsampling_rate_gyro = downsampling_rate_gyro
         self.use_cache = use_cache
+        self.num_classes = num_classes
 
-
+        self.cls = pkl.load(open(os.path.join(annotations, 'cls.pkl'), 'rb'))
         self.annotations = self.__create_annotation_windows__(
             self.__load_annotations__(os.path.join(annotations, filename))
             )
@@ -89,7 +91,8 @@ class EpicDataset(Dataset):
         action = self.annotations.iloc[index, :]
         pid, vid = action['participant_id'], action['video_id']
         start_s, stop_s = action['start_timestamp'], action['stop_timestamp']
-        target = torch.tensor(action['verb_class'], dtype=torch.int16)
+        target = self.cls[action['verb_class']]
+        target = torch.tensor(target, dtype=torch.uint8)
         x = None
 
         if vid not in self.cache:
@@ -104,9 +107,16 @@ class EpicDataset(Dataset):
         gyro = self.transforms_gyro(gyro)
 
         x = torch.cat((accl, gyro), dim=0)
+        
+        target = self.create_binary_array(target)
 
         return (x, target)
 
+    def create_binary_array(self, target_class):
+        binary_array = torch.zeros(self.num_classes)  # Initialize array with zeros
+        binary_array[int(target_class)] = 1  # Set the target class to 1
+        assert binary_array.sum() == 1, f'Target class is not unique: {binary_array}'
+        return binary_array
 
     def set_use_cache(self, use_cache: bool):
         if use_cache:
@@ -163,8 +173,10 @@ class EpicDataset(Dataset):
 
     def __create_annotation_windows__(self, annotations: pd.DataFrame) -> pd.DataFrame:
         distinct_videos = annotations['video_id'].unique()
-        # annotations['start_timestamp'] = pd.to_timedelta(annotations['start_timestamp']).dt.total_seconds()
-        # annotations['stop_timestamp'] = pd.to_timedelta(annotations['stop_timestamp']).dt.total_seconds()
+        
+        if isinstance(annotations['start_timestamp'].iloc[0], str):
+            annotations['start_timestamp'] = pd.to_timedelta(annotations['start_timestamp']).dt.total_seconds()
+            annotations['stop_timestamp'] = pd.to_timedelta(annotations['stop_timestamp']).dt.total_seconds()
 
         for vid in distinct_videos:
             pid = vid.split('_')[0]

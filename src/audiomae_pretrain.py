@@ -33,6 +33,7 @@ from submodules.AudioMAE.engine_pretrain import train_one_epoch
 
 from submodules.AudioMAE.models_mae import MaskedAutoencoderViT
 from data.epic_dataset_ssl import EpicDatasetSSL, load_epic_ssl
+from data.wear_dataset_ssl import WearDatasetSSL
 
 # DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -115,7 +116,7 @@ def get_args_parser():
     parser.add_argument('--freqm', help='frequency mask max length', type=int, default=0) # pretraining 0
     parser.add_argument('--timem', help='time mask max length', type=int, default=0) # pretraining 0
     parser.add_argument("--mixup", type=float, default=0, help="how many (0-1) samples need to be mixup during training")
-    parser.add_argument("--dataset", type=str, default="audioset", help="dataset", choices=["audioset", "esc50", "speechcommands"])
+    parser.add_argument("--dataset", type=str, default="epic", help="dataset", choices=["epic", "wear"])
     parser.add_argument("--use_fbank", type=bool, default=False)
     parser.add_argument("--fbank_dir", type=str, default="/checkpoint/berniehuang/ast/egs/esc50/data/ESC-50-master/fbank", help="fbank dir")
     parser.add_argument("--alpha", type=float, default=0.0, help="contrastive loss weight")
@@ -162,13 +163,49 @@ def main(args):
     np.random.seed(seed)
 
     cudnn.benchmark = True
-    
-    model_dict = {attr: getattr(models_mae, attr) for attr in dir(models_mae)}
+
+
+    DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(DEVICE)
+    num_chans = None
+
+    if args.dataset == 'epic':
+        root_dir = os.path.join('/data', 'EPIC-KITCHENS')
+        annotations_dir = os.path.join('data', 'annotations')
+        filename_training = 'EPIC_100_train_clean_split.pkl'
+        num_chans = 6
+
+        dataset_train = EpicDatasetSSL(
+            src_dir=root_dir,
+            annotations=annotations_dir,
+            filename=filename_training,
+            transforms_accl=transforms.Normalize(mean=[-24.0869, -28.0400, -27.4174], std=[17.0260, 14.2892, 15.4472]),
+            transforms_gyro=transforms.Normalize(mean=[-42.8106, -42.6817, -43.3577], std=[13.2689, 12.8669, 11.9387]),
+        )
+    elif args.dataset == 'wear':
+        root_dir = os.path.join('/data2', 'WEAR')
+        annotations_dir = os.path.join('data', 'WEAR', 'annotations')
+        filename_training = 'wear_annotations_refactored_train.pkl'
+        num_chans = 12
+
+        dataset_train = WearDatasetSSL(
+            src_dir=root_dir,
+            annotations=annotations_dir,
+            filename=filename_training,
+            transforms=transforms.Normalize(
+                mean=[-25.1615, -23.0049, -24.6689, -26.6896, -24.6670, -26.2407, -26.5644,
+                        -23.9310, -26.9497, -26.7723, -24.0176, -27.1356],
+                std=[15.8498, 14.6364, 14.0719, 19.2485, 18.4719, 17.9037, 19.2159, 18.5185,
+                        16.9717, 19.1566, 18.6452, 17.0249]),
+        )
+        model_dict = {attr: getattr(models_mae, attr) for attr in dir(models_mae)}
+    else:
+        raise ValueError('Unknown dataset: {}'.format(args.dataset))
 
     # define the model
     if args.audio_exp:
         model = model_dict[args.model](norm_pix_loss=args.norm_pix_loss, 	
-                                            in_chans=6, audio_exp=True,	
+                                            in_chans=num_chans, audio_exp=True,	
                                             img_size=64,	
                                             alpha=args.alpha, mode=args.mode,
                                             use_custom_patch=args.use_custom_patch,	
@@ -183,21 +220,6 @@ def main(args):
         model = model_dict[args.model](norm_pix_loss=args.norm_pix_loss)
 
     model.to(device)
-
-    root_dir = os.path.join('/data', 'EPIC-KITCHENS')
-    annotations_dir = os.path.join('data', 'annotations')
-    train = True
-    filename_training = 'EPIC_100_train_clean_split.pkl'
-    DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(DEVICE)
-
-    dataset_train = EpicDatasetSSL(
-        src_dir=root_dir,
-        annotations=annotations_dir,
-        filename=filename_training,
-        transforms_accl=transforms.Normalize(mean=[-24.0869, -28.0400, -27.4174], std=[17.0260, 14.2892, 15.4472]),
-        transforms_gyro=transforms.Normalize(mean=[-42.8106, -42.6817, -43.3577], std=[13.2689, 12.8669, 11.9387]),
-    )
     
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()

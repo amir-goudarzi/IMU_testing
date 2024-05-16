@@ -52,7 +52,6 @@ class EpicDatasetSSL(Dataset):
         self.window_size = window_size
         self.cache_size = cache_size
         self.cache = {}  # Initialize an empty cache
-        self.cache_index = 0  # Index to keep track of the current cache position
         self.sampling_rate_accl = sampling_rate_accl
         self.sampling_rate_gyro = sampling_rate_gyro
         self.downsampling_rate_accl = downsampling_rate_accl

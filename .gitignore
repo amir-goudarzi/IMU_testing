@@ -5,6 +5,17 @@ __pycache__/
 .vscode/
 output_dir/
 reports/experiments/audio_mae/epic100_exp/*/checkpoint*
+reports/experiments/audio_mae/epic100_exp/*/events*
+reports/experiments/audio_mae/epic100_exp/*/inf*
+reports/experiments/audio_mae/epic100_exp/finetune/*/checkpoint*
+reports/experiments/audio_mae/epic100_exp/finetune/*/events*
+reports/experiments/audio_mae/epic100_exp/finetune/*/inf*
+reports/experiments/audio_mae/wear/pretrain/*/checkpoint*
+reports/experiments/audio_mae/wear/pretrain/*/events*
+reports/experiments/audio_mae/wear/pretrain/*/inf*
+reports/experiments/audio_mae/wear/finetune/*/checkpoint*
+reports/experiments/audio_mae/wear/finetune/*/events*
+reports/experiments/audio_mae/wear/finetune/*/inf*
 # C extensions
 *.so
 
