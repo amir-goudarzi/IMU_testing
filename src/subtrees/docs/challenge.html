@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<!-- Meta tags for social media banners, these should be filled in appropriatly as they are your "business card" -->
+	<!-- Replace the content tag with appropriate information -->
+	<meta name="description" content="WEAR: An Outdoor Sports Dataset for Wearable and Egocentric Activity Recognition">
+	<meta property="og:title" content="WEAR: An Outdoor Sports Dataset for Wearable and Egocentric Activity Recognition"/>
+	<meta property="og:description" content="WEAR: An Outdoor Sports Dataset for Wearable and Egocentric Activity Recognition"/>
+	<meta property="og:url" content="https://mariusbock.github.io/wear/"/>
+	<!-- Path to banner image, should be in the path listed below. Optimal dimenssions are 1200X630-->
+	<meta property="og:image" content="static/image/banner.png" />
+	<meta property="og:image:width" content="1200"/>
+	<meta property="og:image:height" content="630"/>
+	<!-- Keywords for your paper to be indexed by-->
+	<meta name="keywords" content="datasets; human activity recognition; temporal action localization; wearable activity recognition">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+	<title>WEAR Dataset Challenge<br>@HASCA 2024</title>
+	<link rel="icon" type="image/x-icon" href="static/images/favicon.ico">
+	<link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+	rel="stylesheet">
+
+	<link rel="stylesheet" href="static/css/bulma.min.css">
+	<link rel="stylesheet" href="static/css/bulma-carousel.min.css">
+	<link rel="stylesheet" href="static/css/bulma-slider.min.css">
+	<link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+	<link rel="stylesheet"
+	href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+	<link rel="stylesheet" href="static/css/challenge.css">
+
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+	<script src="https://documentcloud.adobe.com/view-sdk/main.js"></script>
+	<script defer src="static/js/fontawesome.all.min.js"></script>
+	<script src="static/js/bulma-carousel.min.js"></script>
+	<script src="static/js/bulma-slider.min.js"></script>
+	<script src="static/js/index.js"></script>
+</head>
+<body>
+
+	<section class="hero">
+		<div class="hero-body">
+			<div class="container is-max-desktop">
+				<div class="columns is-centered">
+					<div class="column has-text-centered">
+						<h1 class="title is-1 publication-title">WEAR Dataset Challenge<br>@HASCA 2024</h1>
+						<div class="is-size-5 publication-authors">
+							<span class="author-block">Quick Links:</span>
+						</div>
+						<div class="column has-text-centered">
+							<div class="publication-links">
+								<span class="link-block">
+									<!-- Back to Homepage link -->
+									<a href="index.html" 
+									class="external-link button is-normal is-rounded is-dark">
+									<span class="icon">
+										<i class="fas fa-running"></i>
+									</span>
+									<span>WEAR Homepage</span>
+								</a>
+								<!-- HASCA Link -->
+								<span class="link-block">
+									<a href="http://hasca2024.hasc.jp" target="_blank"
+									class="external-link button is-normal is-rounded is-dark">
+									<span class="icon">
+										<i class="fa fa-comments"></i>
+									</span>
+									<span>HASCA Homepage</span>
+								</a>
+								<!-- Download Dataset Link -->
+								<span class="link-block">
+									<a href="https://uni-siegen.sciebo.de/s/DCI8EJlgWw49dPV" target="_blank"
+									class="external-link button is-normal is-rounded is-dark">
+									<span class="icon">
+										<i class="fa fa-database"></i>
+									</span>
+									<span>Download Challenge Data</span>
+								</a><br>
+								<!-- Submit Link -->
+								<span class="link-block">
+									<a href="mailto:wear.challenge@gmail.com" target="_blank"
+									class="external-link button is-normal is-rounded is-dark">
+									<span class="icon">
+										<i class="fa fa-question"></i>
+									</span>
+									<span>Contact Challenge Support</span>
+								</a>
+								<span class="link-block">
+									<a href="mailto:wear.challenge@gmail.com" target="_blank"
+									class="external-link button is-normal is-rounded is-dark">
+									<span class="icon">
+										<i class="fa fa-code"></i>
+									</span>
+									<span>Submit Results</span>
+								</a>
+								<!-- Submit Paper -->
+								<span class="link-block">
+									<a href="https://new.precisionconference.com/submissions" target="_blank"
+									class="external-link button is-normal is-rounded is-dark">
+									<span class="icon">
+										<i class="fa fa-file"></i>
+									</span>
+									<span>Submit Paper</span>
+								</a>
+								
+							</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<video autoplay loop muted width="100%" height="auto" src="static/videos/banner_video-mp4_large.mp4"></video>
+
+<!-- Body content -->
+<section class="section hero is-small"> 
+	<div class="container"> 	
+		<div class="columns has-text-left is-four-fifths"> 
+			<div class="column">
+			<h2 class="title is-3 has-text-centered">REGISTRATION IS NOW OPEN!</h2>
+			<!-- Challenge abstract -->  
+			<h2 class="title is-3">Overview</h2> 
+			<div class="content has-text-justified"> 
+					<p class="has-text-grey is-size-7"><h3>Goal of the Challenge</h3></p>
+					<p>
+						The <i>First WEAR Dataset Challenge</i> is a Human Activity Recognition prediction challenge based on the inertial data of the original WEAR dataset <a href="#WEAR">[1]</a> publication. 
+						<br>
+						Challenge participants are tasked to predict the activity label of a yet unreleased test dataset of newly and re-recorded participants. Winners are determined based on the sample-wise macro F1-score averaged across all activities and participants. The challenge is part of the <a href="http://hasca2024.hasc.jp/">HASCA Workshop</a> at <a href="https://www.ubicomp.org/ubicomp-iswc-2024/">UbiComp/ ISWC 2024</a>.
+					</p>
+					<p class="has-text-grey is-size-7"><h3>The Data & Submission Format</h3></p>
+					<p>
+						The challenge dataset download contains accelerometer data of 18 particpants performing multiple outdoor fitness workouts. In total each participant performed 18 workout activities. Data was captured at the four limbs of each participant, being sampled at 50 Hz with a sensitivity of ±8G. The test dataset contains data of rerecorded and new participants performing the same workout and activities as the original participants. Participants are tasked to predict the activity label of each data record of the new participants using their prediction algorithm of choice. Submissions should contain the predicted activity label for each data record of the test dataset (see below for more details).
+					</p>
+					<p class="has-text-grey is-size-7"><h3>Submission to HASCA @ UbiComp/ ISWC 2024</h3></p>
+					To be part of the final ranking, participants will be required to submit a detailed paper to the HASCA workshop. The paper should contain technical description of the processing pipeline, the algorithms and the results achieved during the original WEAR dataset. Submissions must follow the HASCA format (see below for more details).
+
+					<p class="has-text-grey is-size-7"><h3>About the WEAR Dataset</h3></p>
+					<p> The WEAR dataset is an outdoor sports dataset for inertial- and video-based human activity recognition (HAR). The dataset comprises data from 18 participants performing a total of 18 different workout activities with untrimmed inertial (acceleration) and egocentric video data recorded at 10 different outside locations. WEAR provides a challenging prediction scenario marked by purposely introduced activity variations as well as an overall small information overlap across modalities. This challenge focuses on the inertial data only.</br>
+					</p> 
+				</div>
+			<!-- End Challenge abstract --> 
+			
+			</br>
+			<!-- Deadlines -->    
+			<h2 class="title is-3">Important Dates</h2> 
+			<div class="content has-text-justified"> 
+			<ul>
+				<li><u>Registration open:</u> April 12, 2024</li>
+				<li><u>Challenge duration:</u> April 12, 2024 - July 04, 2024</li>
+				<li><u>HASCA-WEAR paper submission:</u> July 04, 2024 AoE</li>
+				<li><u>HASCA-WEAR review notification:</u> July 11, 2024</li>
+				<li><u>HASCA-WEAR camera ready submission:</u> July 19, 2024</li>
+				<li><u>HASCA Workshop:</u> October 05-06, 2024 in Melbourne, Australia</li>
+			</ul>
+				
+			</div>
+			<!-- End deadlines -->  
+
+			<!-- Prizes -->  
+			<h2 class="title is-3">Prizes</h2> 
+			<div class="content has-text-justified"> 
+				<i>tba</i>
+			</div>
+			<!-- End prizes -->
+			
+			<!-- Registration -->    
+			<h2 class="title is-3">Registration</h2> 
+			<div class="content has-text-justified"> 
+				<p>Registration is now open! In order to participate, each team must send a registration email to <a href="mailto:wear.challenge@gmail.com">wear.challenge@gmail.com</a>, stating the:
+					<ul>
+						<li>Name of the team + e-mail adress of one participant representing the team</li>
+						<li>Full Names of the participants in the team</li>
+						<li>Affiliations of each participant (non-affiliated persons are also encouraged to participate)</li>
+					</ul>
+				</p>
+			</div>
+			<!-- End registration -->
+			
+			<!-- Downloads -->    
+			<h2 class="title is-3">Challenge Data Download</h2> 
+			<div class="content has-text-justified"> 
+				<p>
+					<ul>
+						<li><b>Training Data</b>: Original WEAR dataset [raw inertial only; 600 MB] (<a href="https://uni-siegen.sciebo.de/s/DCI8EJlgWw49dPV">download</a>)</li>
+						<li><b>Test Data</b>: <i>to be released</i></li>
+					</ul>
+					<b>Information on the Test Dataset:</b> The test dataset + a sample submission file will be released by June 3rd. The test dataset will consist of both new participants and additional sessions of three participants which are also part of the train dataset.
+				</p>
+			</div>
+			<!-- End Downloads -->
+			
+			<!-- Evaluation -->    
+			<h2 class="title is-3">Evaluation</h2> 
+			<div class="content has-text-justified"> 
+				<p>
+					Evaluation of submissions will be based on the <b>sample-wise, macro F1-score</b> averaged across all participants. The macro F1-score is the average of the F1-scores of each activity class. Please check the <a href="https://github.com/mariusbock/wear">WEAR dataset repository</a> for sample code on how to translate windowed data back to record-wise data and calculate the macro F1-score.
+				</p>
+			</div>
+			<!-- End Evaluation -->
+
+			<!-- Submission -->    
+			<h2 class="title is-3">Submission Guidelines</h2> 
+			<div class="content has-text-justified"> 
+
+			<h3>Submission of Final Predictions:</h3>
+				To submit your final predictions of the test dataset, please send a plain CSV file “{Your_Team_Name}.csv" (or a download link to it) to <a href="mailto:wear.challenge@gmail.com">wear.challenge@gmail.com</a>. The CSV should contain the recordwise predicted labels of the test dataset. Note that we will assume the same label names as in the train and the same ordering as in the test dataset - thus make sure to keep the order of the records and use the same label names as in the training data. 
+				
+				An example of submission will be made available once the test dataset is released. 
+			<h3>Submission of Technical Report:</h3>
+
+			Submission of the technical report will happen via <a href="https://new.precisionconference.com/submissions">PCS</a> <i>(select SIGCHI / UbiComp 2024 / UbiComp 2024 Workshop - HASCA-WEAR)</i>. Your technical report should detail your solution as well as provide preliminary results you achieved on the train dataset. ACM requires UbiComp/ISWC 2024 workshop submissions to use the double-column template. Your technical report must be between 3 to 6 pages including references. Submissions do not need to be anonymous. For details on the template please refer to the <a href="https://www.ubicomp.org/ubicomp-iswc-2024/authors/formatting/">UbiComp/ISWC website</a>.
+			</div>
+			<!-- End Submission -->
+
+			<!-- Format -->    
+			<h2 class="title is-3">Dataset format</h2> 
+			<div class="content has-text-justified"> 
+				<h3>Activities & Recording Scenario</h3>
+				<p> 
+					Each participant performed a set of 18 workout activities. These activities include running-, stretching- and strength-based exercises, with base activities like push-ups being complemented with complex variations that alter and/ or extend the performed movement during the exercise. Activities were divided across multiple recording sessions, with each session consisting of uninterrupted data streams of all modalities. Each participant was tasked to perform each exercise for at least 90 seconds, but had the freedom to choose the order of activities and take breaks as desired. 
+				</p>
+				</br>
+				<video autoplay is-centered loop muted width="100%" height="auto" src="static/videos/mosaic_vertical_static-crop.mp4"></video>
+			</div>
+
+			<div class="content has-text-justified"> 
+				<h3>Training Data</h3> 
+				<p>
+					The original dataset comprises of outdoor workouts of 18 participants. Each workout is divided across multiple session. In total more than 15 hours were recorded at 10 outdoor locations. The training data contains the raw sensor data of the 18 partipants which were part of the original WEAR dataset <a href="#WEAR">[1]</a>. The sensors were placed at four body locations (right wrist, left wrist, right ankle and left ankle). Each sensor sampled 3D-accelerometer data. During all recording sessions sensor orientation was fixed according to one pre-defined sensor placement. Each sampled data record is labeled as one of the 18 (+ <code>null</code>-class) possible activities. 
+				<br>
+					<h3>Dataset Overview</h3>
+					<p>
+						<b>Training Data</b>: The training data is provided in a seperate CSV files per subject. Each file contains the following columns:
+						<ul>
+							<li><i>sbj_id</i>: subject identifier (<code>int</code> between <code>0</code> and <code>17</code>)</li>
+							<li><i>right_arm_acc_x:</i> right arm acceleration x-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>right_arm_acc_y:</i> right arm acceleration y-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>right_arm_acc_z:</i> right arm acceleration z-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>right_leg_acc_x:</i> right leg acceleration x-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>right_leg_acc_y:</i> right leg acceleration y-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>right_leg_acc_z:</i> right leg acceleration z-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>left_leg_acc_x:</i> left leg acceleration x-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>left_leg_acc_y:</i> left leg acceleration y-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>left_leg_acc_z:</i> left leg acceleration z-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>left_arm_acc_x:</i> left arm acceleration x-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>left_arm_acc_y:</i> left arm acceleration y-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>left_arm_acc_z:</i> left arm acceleration z-axis (<code>float</code> between <code>-8.0</code> and <code>+8.0</code>)</li>
+							<li><i>label:</i> activity label (<code>str</code> being one of the 18 workout activities or <code>null</code> during breaks)</li>
+						</ul>
+					</p>
+					
+					<h3>Testing Data</h3> 
+					<b>DETAILS COMING SOON!</b>
+					
+				</p>
+			</div>
+			<!-- End Format -->
+			
+			<!-- Rules -->    
+			<h2 class="title is-3">Rules</h2> 
+			<div class="content has-text-justified"> 
+				<p>
+					<ul>
+						<li>You do not work in or collaborate with the WEAR dataset project (<a href=http://mariusbock.github.io/wear/>http://mariusbock.github.io/wear/</a>)</li>
+						<li>If you submit an entry, but are not qualified to enter the contest, this entry is voluntary. The organizers reserve the right to evaluate it for scientific purposes. If you are not qualified to submit a contest entry and still choose to submit one, under no circumstances will such entries qualify for sponsored prizes.</li>
+						<li>Only registered teams will be considered for the final ranking. Teams must register via an e-mail to <a href="mailto:wear.challenge@gmail.com">wear.challenge@gmail.com</a> (see above for details).</li>
+						<li>To be part of the final ranking, participants will be required to publish a detailed paper in the proceedings of the <a href="http://hasca2024.hasc.jp/">HASCA workshop</a>; The dates will be set during the competition. Publishing of the paper also requires that at least one team member is registered for the <a href="http://hasca2024.hasc.jp/">HASCA workshop</a>.</li>
+						<li> The participants' predictions must be submitted online by sending an email to <a href="mailto:wear.challenge@gmail.com">wear.challenge@gmail.com</a>. The submission e-mail should contain a link to the predictions file, using services such as Dropbox, Google Drive, etc. In case the participants cannot provide link using some file sharing service, they should contact the organizers via email <a href="mailto:wear.challenge@gmail.com">wear.challenge@gmail.com</a>.</li>
+						<li>Only one single submission is allowed per team. In case of multiple submission only the one which was submitted last will be considered for the final ranking. The same person cannot be in multiple teams, except if that person is a supervisor. </li>
+						</ul>
+					</ul>
+				</p>
+			</div>
+			<!-- End Rules -->
+			
+			<!-- Other -->
+			<h2 class="title is-3">Contact</h2> 
+			<div class="content has-text-justified">
+				Challenge related questions: <a href="mailto:wear.challenge@gmail.com">wear.challenge@gmail.com</a><br>
+				All other questions: <a href="mailto:marius.bock@uni-siegen.de">marius.bock@uni-siegen.de</a>
+			</div>
+			<h2 class="title is-3">Organizers</h2> 
+			<div class="content has-text-justified"> 
+				<a href="https://scholar.google.com/citations?user=7HPBugEAAAAJ&hl=en&oi=ao">Marius Bock</a>, University of Siegen<br>
+				<a href="https://scholar.google.com/citations?user=LkNmrfEAAAAJ&hl=en&oi=ao">Christina Runkel</a>, University of Cambridge<br>
+				<a href="https://scholar.google.de/citations?user=cs3xPp4AAAAJ&hl=de">Alexander Hoelzemann</a>, University of Siegen<br>
+				<a href="https://scholar.google.com/citations?user=RwxlF2EAAAAJ&hl=en&oi=ao">Mathias Ciliberto</a>, University of Sussex<br>
+				<a href="https://scholar.google.com/citations?user=iPI39lEAAAAJ&hl=en&oi=ao">Prof. Dr. Kristof Van Laerhoven</a>, University of Siegen<br>
+				<a href="https://scholar.google.com/citations?user=sxzdAGUAAAAJ&hl=en&oi=ao">Prof. Dr. Michael Moeller</a>, University of Siegen
+			</div>
+			<h2 class="title is-3">References</h2> 
+			<div class="content has-text-justified"> 
+				<p>
+					<a id="WEAR">[1]</a> 
+					Marius Bock, Hilde Kuehne, Kristof Van Laerhoven and Michael Moeller. 2023. WEAR: An Outdoor Sports Dataset for Wearable and Egocentric Activity Recognition. CoRR abs/2304.05088. <a href="https://arxiv.org/abs/2304.05088">https://arxiv.org/abs/2304.05088</a>
+					
+				</p>
+			</div>
+			<h2 class="title is-3">License</h2> 
+			<div class="content has-text-justified"> 
+				<p>
+					WEAR is offered under a
+					<a href="http://creativecommons.org/licenses/by-nc-sa/4.0/">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>. You are free to use, copy, and redistribute the material for non-commercial purposes provided you give appropriate credit, provide a link to the license, and indicate if changes were made. If you remix, transform, or build upon the material, you must distribute your contributions under the same license as the original. You may not use the material for commercial purposes.
+				</p>
+			</div>
+			
+		</div> 
+	</div>
+</section>
+<!-- End body content -->
+
+<!--BibTex citation -->
+  <section class="section" id="BibTeX">
+    <div class="container is-max-desktop content">
+      
+</section>
+<!--End BibTex citation -->
+
+</body>
+</html>
