@@ -32,16 +32,16 @@ from timm.data.mixup import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 from timm.models.layers import to_2tuple
 
-import submodules.AudioMAE.util.misc as misc
-from submodules.AudioMAE.util.datasets import build_dataset
-from submodules.AudioMAE.util.pos_embed import interpolate_pos_embed, interpolate_pos_embed_audio, interpolate_patch_embed_audio, interpolate_pos_embed_img2audio
-from submodules.AudioMAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
-import submodules.AudioMAE.util.lr_decay as lrd
+import subtrees.AudioMAE.util.misc as misc
+from subtrees.AudioMAE.util.datasets import build_dataset
+from subtrees.AudioMAE.util.pos_embed import interpolate_pos_embed, interpolate_pos_embed_audio, interpolate_patch_embed_audio, interpolate_pos_embed_img2audio
+from subtrees.AudioMAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
+import subtrees.AudioMAE.util.lr_decay as lrd
 
-import submodules.AudioMAE.models_vit as models_vit
+import subtrees.AudioMAE.models_vit as models_vit
 
-from submodules.AudioMAE.engine_finetune_as import train_one_epoch, evaluate #, train_one_epoch_av, evaluate_av
-from submodules.AudioMAE.dataset import AudiosetDataset, DistributedWeightedSampler, DistributedSamplerWrapper
+from subtrees.AudioMAE.engine_finetune_as import train_one_epoch, evaluate #, train_one_epoch_av, evaluate_av
+from subtrees.AudioMAE.dataset import AudiosetDataset, DistributedWeightedSampler, DistributedSamplerWrapper
 from timm.models.vision_transformer import PatchEmbed
 
 from torch.utils.data import WeightedRandomSampler

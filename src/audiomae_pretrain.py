@@ -22,16 +22,16 @@ import torchvision.datasets as datasets
 # assert timm.__version__ == "0.3.2"  # version check
 import timm.optim.optim_factory as optim_factory
 
-import submodules.AudioMAE.util.misc as misc
-from submodules.AudioMAE.util.pos_embed import interpolate_pos_embed, interpolate_pos_embed_audio, interpolate_patch_embed_audio
-from submodules.AudioMAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
+import subtrees.AudioMAE.util.misc as misc
+from subtrees.AudioMAE.util.pos_embed import interpolate_pos_embed, interpolate_pos_embed_audio, interpolate_patch_embed_audio
+from subtrees.AudioMAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
 
-import submodules.AudioMAE.models_mae as models_mae
+import subtrees.AudioMAE.models_mae as models_mae
 
-from submodules.AudioMAE.engine_pretrain import train_one_epoch
+from subtrees.AudioMAE.engine_pretrain import train_one_epoch
 
 
-from submodules.AudioMAE.models_mae import MaskedAutoencoderViT
+from subtrees.AudioMAE.models_mae import MaskedAutoencoderViT
 from data.epic_dataset_ssl import EpicDatasetSSL, load_epic_ssl
 from data.wear_dataset_ssl import WearDatasetSSL
 

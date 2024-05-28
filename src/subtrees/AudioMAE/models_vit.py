@@ -16,7 +16,7 @@ import torch.nn as nn
 import numpy as np
 import timm.models.vision_transformer
 from timm.models.vision_transformer import PatchEmbed, Block
-from util.patch_embed import PatchEmbed_new, PatchEmbed3D_new
+from .util.patch_embed import PatchEmbed_new, PatchEmbed3D_new
 
 
 class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
@@ -106,14 +106,15 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             # F=12
         else:
             # ## for AS 
-            T=64
-            F=8
+            # T=64
+            # F=8
             # ## for ESC
             #T=32
             #F=8            
-            ## for SPC
-            # T=8
-            # F=8
+            ## for SPC & EPIC
+            T=8
+            F=8
+
         
         # mask T
         x = x.reshape(N, T, F, D)
@@ -175,15 +176,20 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
 
     # overwrite original timm
-    def forward(self, x, v=None, mask_t_prob=0.0, mask_f_prob=0.0):
+    def forward(self, x, v=None, mask_t_prob=0.0, mask_f_prob=0.0, classification=True):
         if mask_t_prob > 0.0 or mask_f_prob > 0.0:
             x = self.forward_features_mask(x, mask_t_prob=mask_t_prob, mask_f_prob=mask_f_prob)
         else:
             x = self.forward_features(x)
-        x = self.head(x)
+        if classification:
+            x = self.head(x)
         return x
 
-
+def vit_small_patch8(**kwargs):
+    model = VisionTransformer(
+        patch_size=8, embed_dim=384, depth=8, num_heads=6, mlp_ratio=4, qkv_bias=True,
+        norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)        
+    return model
 
 def vit_small_patch16(**kwargs):
     model = VisionTransformer(

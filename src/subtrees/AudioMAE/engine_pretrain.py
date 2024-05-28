@@ -14,8 +14,8 @@ from typing import Iterable
 
 import torch
 
-import util.misc as misc
-import util.lr_sched as lr_sched
+from .util import misc
+from .util import lr_sched
 
 
 def train_one_epoch(model: torch.nn.Module,
@@ -38,7 +38,9 @@ def train_one_epoch(model: torch.nn.Module,
 
     # set model epoch
     model.epoch = epoch
-    for data_iter_step, (samples, _labels, _vids) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    # for data_iter_step, (samples, _labels, _vids) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for data_iter_step, samples in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+
 
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:

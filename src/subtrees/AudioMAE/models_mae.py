@@ -17,9 +17,9 @@ import torch.nn as nn
 
 #from timm.models.vision_transformer import PatchEmbed, Block
 from timm.models.vision_transformer import Block
-from util.pos_embed import get_2d_sincos_pos_embed, get_2d_sincos_pos_embed_flexible, get_1d_sincos_pos_embed_from_grid
-from util.misc import concat_all_gather
-from util.patch_embed import PatchEmbed_new, PatchEmbed_org
+from .util.pos_embed import get_2d_sincos_pos_embed, get_2d_sincos_pos_embed_flexible, get_1d_sincos_pos_embed_from_grid
+from .util.misc import concat_all_gather
+from .util.patch_embed import PatchEmbed_new, PatchEmbed_org
 from timm.models.swin_transformer import SwinTransformerBlock
 
 class MaskedAutoencoderViT(nn.Module):
@@ -57,7 +57,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.encoder_depth = depth
         self.contextual_depth = contextual_depth
         self.blocks = nn.ModuleList([
-            Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, qk_scale=None, norm_layer=norm_layer)
+            Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
 
@@ -78,7 +78,7 @@ class MaskedAutoencoderViT(nn.Module):
             feat_size = (102,12)
         else:
             window_size= (4,4)
-            feat_size = (64,8)                
+            feat_size = self.patch_embed.patch_hw          
         if self.decoder_mode == 1:
             decoder_modules = []
             for index in range(16):
@@ -93,12 +93,14 @@ class MaskedAutoencoderViT(nn.Module):
                 decoder_modules.append(
                     SwinTransformerBlock(
                         dim=decoder_embed_dim,
-                        num_heads=16,
+                        # input_resolution=64,
                         feat_size=feat_size,
+                        num_heads=16,
                         window_size=window_size,
                         shift_size=shift_size,
                         mlp_ratio=mlp_ratio,
                         drop=0.0,
+                        # attn_drop=0.0,
                         drop_attn=0.0,
                         drop_path=0.0,
                         extra_norm=False,
@@ -110,7 +112,7 @@ class MaskedAutoencoderViT(nn.Module):
         else:
             # Transfomer
             self.decoder_blocks = nn.ModuleList([
-                Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, qk_scale=None, norm_layer=norm_layer)
+                Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                 for i in range(decoder_depth)])
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
@@ -198,14 +200,16 @@ class MaskedAutoencoderViT(nn.Module):
                 h = imgs.shape[2] // p
                 w = imgs.shape[3] // p
                 #h,w = self.patch_embed.patch_hw
-                x = imgs.reshape(shape=(imgs.shape[0], 1, h, p, w, p))
+                N, C = imgs.shape[:2]
+                x = imgs.reshape(shape=(N, C, h, p, w, p))
                 x = torch.einsum('nchpwq->nhwpqc', x)
-                x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * 1))
+                x = x.reshape(shape=(N, h * w, p**2 * C))
         else:
             h = w = imgs.shape[2] // p
-            x = imgs.reshape(shape=(imgs.shape[0], 3, h, p, w, p))
+            N, C = imgs.shape[:2]
+            x = imgs.reshape(shape=(N, C, h, p, w, p))
             x = torch.einsum('nchpwq->nhwpqc', x)
-            x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * 3))
+            x = x.reshape(shape=(N, h * w, p**2 * C))
 
         return x
 
@@ -260,7 +264,7 @@ class MaskedAutoencoderViT(nn.Module):
         if self.use_custom_patch: # overlapped patch
             T=101
             F=12
-        else:            
+        else:
             T=64
             F=8
         #x = x.reshape(N, T, F, D)
@@ -431,6 +435,21 @@ def mae_vit_small_patch16_dec512d8b(**kwargs):
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     return model
 
+def mae_vit_small_patch8_dec512d8b(**kwargs):
+    model = MaskedAutoencoderViT(
+        patch_size=8, embed_dim=384, depth=8, num_heads=6,
+        decoder_embed_dim=512, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
+
+def mae_vit_base_patch8_dec512d8b(**kwargs):
+    model = MaskedAutoencoderViT(
+        patch_size=8, embed_dim=768, depth=12, num_heads=12,
+        decoder_embed_dim=512, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
+
+
 def mae_vit_base_patch16_dec512d8b(**kwargs):
     model = MaskedAutoencoderViT(
         patch_size=16, embed_dim=768, depth=12, num_heads=12,
@@ -458,3 +477,5 @@ mae_vit_base_patch16 = mae_vit_base_patch16_dec512d8b  # decoder: 512 dim, 8 blo
 mae_vit_large_patch16 = mae_vit_large_patch16_dec512d8b  # decoder: 512 dim, 8 blocks
 mae_vit_huge_patch14 = mae_vit_huge_patch14_dec512d8b  # decoder: 512 dim, 8 blocks
 mae_vit_small_patch16 = mae_vit_small_patch16_dec512d8b # decoder: 512 dim, 8 blocks
+mae_vit_small_patch8 = mae_vit_small_patch8_dec512d8b
+mae_vit_base_patch8 = mae_vit_base_patch8_dec512d8b

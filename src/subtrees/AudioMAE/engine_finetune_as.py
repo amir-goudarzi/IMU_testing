@@ -14,15 +14,20 @@ import sys
 from typing import Iterable, Optional
 import numpy as np
 import torch
+import os
 
 from timm.data import Mixup
 from timm.utils import accuracy
 
-import util.misc as misc
-import util.lr_sched as lr_sched
-from util.stat import calculate_stats, concat_all_gather
+from .util import misc
+from .util import lr_sched
+from .util.stat import calculate_stats, concat_all_gather
 
-
+# def create_batched_binary_array(target_classes, num_classes):
+#     batch_size = target_classes.size(0)
+#     binary_arrays = torch.zeros(batch_size, num_classes)  # Initialize array with zeros
+#     binary_arrays.scatter_(1, target_classes.view(-1, 1), 1)  # Set the target classes to 1
+#     return binary_arrays
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
@@ -42,13 +47,14 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     if log_writer is not None:
         print('log_dir: {}'.format(log_writer.log_dir))
 
-    for data_iter_step, (samples, targets, _vids) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for data_iter_step, (samples, targets) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
 
         samples = samples.to(device, non_blocking=True)
+        # targets = create_batched_binary_array(targets, model.num_classes)
         targets = targets.to(device, non_blocking=True)
 
         with torch.cuda.amp.autocast():
@@ -95,7 +101,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 
 @torch.no_grad()
-def evaluate(data_loader, model, device, dist_eval=False):
+def evaluate(data_loader, model, device, dist_eval=False, out_dir=''):
     criterion = torch.nn.BCEWithLogitsLoss()
 
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -105,12 +111,12 @@ def evaluate(data_loader, model, device, dist_eval=False):
     model.eval()
     outputs=[]
     targets=[]
-    vids=[]
+    # vids=[]
     for batch in metric_logger.log_every(data_loader, 300, header):
 
         images = batch[0]
         target = batch[1]
-        vid = batch[2]
+        # vid = batch[2]
         images = images.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
 
@@ -125,17 +131,22 @@ def evaluate(data_loader, model, device, dist_eval=False):
                 target = concat_all_gather(target)
             outputs.append(output)
             targets.append(target)
-            vids.append(vid)
+            # vids.append(vid)
 
     outputs=torch.cat(outputs).cpu().numpy()
     targets=torch.cat(targets).cpu().numpy()
-    vids = [j for sub in vids for j in sub]
-    np.save('inf_output.npy', {'vids':vids, 'embs_527':outputs, 'targets':targets})
+    # vids = [j for sub in vids for j in sub]
+    # np.save('inf_output.npy', {'vids':vids, 'embs_527':outputs, 'targets':targets})
+    np.save(os.path.join(out_dir, 'inf_output.npy'), {f'embs_{model.num_classes}':outputs, 'targets':targets})
     stats = calculate_stats(outputs, targets)
 
     AP = [stat['AP'] for stat in stats]
+    ACC = [stat['acc'] for stat in stats]
     mAP = np.mean([stat['AP'] for stat in stats])
+    mAcc = np.mean([stat['acc'] for stat in stats])
+
     print("mAP: {:.6f}".format(mAP))
-    return {"mAP": mAP, "AP": AP}
+    print("mAcc: {:.6f}".format(mAcc))
+    return {"mAP": mAP, "AP": AP, "mAcc": mAcc}
 
 
