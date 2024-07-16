@@ -20,7 +20,6 @@ class SpectrogramsGenerator(object):
 
     def __init__(self,
             window_size: int,
-            overlap_in_s,
             n_fft: int,
             win_length: int,
             hop_length: int,
@@ -29,6 +28,7 @@ class SpectrogramsGenerator(object):
             downsampling_rate,
             transforms,
             resizes: tuple[int, int],
+            overlap_in_s=None,
         ):
         super(SpectrogramsGenerator, self).__init__()
         self.window_size = window_size

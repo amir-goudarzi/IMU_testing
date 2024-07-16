@@ -5,6 +5,7 @@ import torchaudio.transforms as T
 import json
 import os
 import numpy as np
+import pickle as pkl
 
 from features.imu_preprocessing import SpectrogramsGenerator
 from features.transforms import normalize_tensor, cut_and_pad
@@ -20,19 +21,19 @@ class EgoExo4D(Dataset):
             n_fft: int,
             win_length: int,
             hop_length: int,
-            sampling_rate: int,
-            downsampling_rate: int,
             transforms,
             resizes: tuple[int, int],
-            temporal_points: int
+            temporal_points: int,
+            sampling_rate: int,
+            downsampling_rate=None,
         ):
-        assert os.path.exists(takes_path), "Invalid path to EgoExo4D takes"
+        assert os.path.isfile(takes_path), "Invalid path to EgoExo4D takes"
         assert os.path.exists(data_dir), "Invalid path to EgoExo4D data"
         assert stream_labels.__len__() <= 2, "Only two IMU streams are supported"
         assert all([stream_label == 'imu-left' or stream_label == 'imu-right' for stream_label in stream_labels]), "Invalid stream labels"
 
         self.data_dir = data_dir
-        self.takes = json.load(open(takes_path))
+        self.takes = pkl.load(open(takes_path, 'rb'))
         self.stream_labels = stream_labels
         self.sampling_rate = sampling_rate
         self.window_size = window_size
@@ -84,10 +85,12 @@ class EgoExo4D(Dataset):
 
         '''
         take_name = take['take_name']
+        start_s = take['start_s']
+        end_s = take['end_s']
 
         # Get IMU data
-        left = self.__load_imu__(take_name, 'imu-left')
-        right = self.__load_imu__(take_name, 'imu-right')
+        left = self.__load_imu__(take_name, start_s, end_s, 'imu-left')
+        right = self.__load_imu__(take_name, start_s, end_s, 'imu-right')
 
         # Cut the IMU data
         left = cut_and_pad(left, self.sampling_rate, self.window_size)
@@ -116,12 +119,18 @@ class EgoExo4D(Dataset):
 
         if position == 'imu-right':
             # 1 KHz
-            imu_right = torch.from_numpy(np.load(os.path.join(take_path, f'right.npy')))
+            imu_right = torch.from_numpy(np.load(os.path.join(take_path, f'right.npy'))).type(torch.float32)
+            # Align to the first timestamp
+            start_ns += imu_right[0, 0]
+            end_ns += imu_right[0, 0]
             imu_right = imu_right[1:, (imu_right[0] >= start_ns) & (imu_right[0] <= end_ns)]
             return T.Resample(1000, self.sampling_rate)(imu_right)
         else:
             # 800 Hz
-            imu_left = torch.from_numpy(np.load(os.path.join(take_path, f'left.npy')))
+            imu_left = torch.from_numpy(np.load(os.path.join(take_path, f'left.npy'))).type(torch.float32)
+            # Align to the first timestamp
+            start_ns += imu_left[0, 0]
+            end_ns += imu_left[0, 0]
             imu_left = imu_left[1:, (imu_left[0] >= start_ns) & (imu_left[0] <= end_ns)]
             return T.Resample(800, self.sampling_rate)(imu_left)
         
@@ -158,10 +167,9 @@ class EgoExo4D(Dataset):
 
         '''
         take_name = take['take_name']
-        start_s, end_s = take['start'], take['end']
         omni_idx = take['omnivore_idx']
         features_path = os.path.join(self.data_dir, 'features', take_name)
-        omnivore = torch.load(os.path.join(features_path, 'omnivore_video', f"{take['name']}_aria01_rgb.pt"))
+        omnivore = torch.load(os.path.join(features_path, 'omnivore_video', f"{take['take_uid']}_aria01_rgb.pt"))
 
         # Get the exact omnivore feature. The file is a tensor of shape (#feat, 1, dim. feat).
         # For further information, please refer to the following link:
