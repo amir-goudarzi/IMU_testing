@@ -6,7 +6,7 @@
 # Adaption by: Marius Bock
 # E-Mail: marius.bock@uni-siegen.de
 # ------------------------------------------------------------------------
-import os
+import os, sys
 
 import torch
 import torch.nn as nn
@@ -23,9 +23,13 @@ from .libs.utils import (train_one_epoch, ANETdetection, save_checkpoint, make_o
 from .libs.datasets.datasets import make_data_loader, make_dataset
 from .libs.utils.train_utils import valid_one_epoch
 from .libs.core.config import _update_config
+import gc
+
+sys.path.append(os.path.join('src'))
+from utils.wrappers import WrapperMAE
 
 
-def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generator, run):
+def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generator, run, args):
     cfg = _update_config(cfg)
     split_name = cfg['dataset']['json_anno'].split('/')[-1].split('.')[0]
     mkdir_if_missing(os.path.join(ckpt_folder, 'ckpts'))
@@ -55,8 +59,25 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
     # set bs = 1, and disable shuffle
     val_loader = make_data_loader(val_dataset, False, None, 1, cfg['loader']['num_workers'])
 
+    mae_backbone = None
+    if args.config_mae:
+        mae_chkpt = args.finetune.split('pretrain/')
+        change = mae_chkpt[1].split('/')[0]
+        prefix = change.split('_')[0]
+        suffix = split_name.split('wear_')[1]
+        sub_split_name = f'{prefix}_{suffix}'
+        mae_chkpt = args.finetune.replace(change, sub_split_name)
+        mae_backbone = WrapperMAE(
+            config_mae=args.config_mae,
+            seconds=args.seconds,
+            matrix_type=args.matrix_type,
+            checkpoint=mae_chkpt,
+            eval=True
+        )
+        mae_backbone.to(cfg['devices'][0])
+
     # model
-    model = make_meta_arch(cfg['model']['model_name'], **cfg['model'])
+    model = make_meta_arch(args, cfg['model']['model_name'], **cfg['model'])
     model = nn.DataParallel(model, device_ids=cfg['devices'])
     print("Number of learnable parameters for ActionFormer: {}".format(sum(p.numel() for p in model.parameters() if p.requires_grad)))
     # optimizer
@@ -92,7 +113,7 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
     t_losses, v_losses= np.array([]), np.array([])
     for epoch in range(start_epoch, start_epoch + max_epochs):
         # train for one epoch
-        t_loss = train_one_epoch(train_loader, model, optimizer, scheduler, model_ema, cfg['train_cfg']['clip_grad_l2norm'])
+        t_loss = train_one_epoch(train_loader, model, optimizer, scheduler, model_ema, cfg['train_cfg']['clip_grad_l2norm'], model_mae=mae_backbone)
 
         # save ckpt once in a while
         if (((ckpt_freq > 0) and ((epoch + 1) % ckpt_freq == 0))):
@@ -110,7 +131,7 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
         val_db_vars = val_dataset.get_attributes()
         det_eval = ANETdetection(val_dataset.json_anno, val_dataset.split[0], tiou_thresholds = val_db_vars['tiou_thresholds'])
         
-        v_loss, v_segments = valid_one_epoch(val_loader, model)
+        v_loss, v_segments = valid_one_epoch(val_loader, model, model_mae=mae_backbone)
         v_preds, v_gt, _ = convert_segments_to_samples(v_segments, val_sens_data, cfg['dataset']['sampling_rate'])
         
         if ((epoch + 1) == max_epochs):
@@ -156,5 +177,8 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
             run[split_name].append({"train_loss": t_loss, "val_loss": v_loss, "accuracy": np.nanmean(v_acc), "precision": np.nanmean(v_prec), "recall": np.nanmean(v_rec), 'f1': np.mean(v_f1), 'mAP': np.mean(val_mAP)}, step=epoch)
             for tiou, tiou_mAP in zip(cfg['dataset']['tiou_thresholds'], val_mAP):
                     run[split_name].append({'mAP@' + str(tiou): tiou_mAP}, step=epoch)
-
+        del det_eval
+        gc.collect()
+    del model, model_ema, optimizer, scheduler, train_loader, val_loader, train_dataset, val_dataset, val_sens_data, mae_backbone
+    gc.collect()
     return t_losses, v_losses, val_mAP, v_preds, v_gt 

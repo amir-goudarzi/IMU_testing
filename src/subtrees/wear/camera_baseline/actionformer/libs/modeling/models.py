@@ -41,8 +41,8 @@ def make_neck(name, **kwargs):
     neck = necks[name](**kwargs)
     return neck
 
-def make_meta_arch(name, **kwargs):
-    meta_arch = meta_archs[name](**kwargs)
+def make_meta_arch(args, name, **kwargs):
+    meta_arch = meta_archs[name](args, **kwargs)
     return meta_arch
 
 def make_generator(name, **kwargs):

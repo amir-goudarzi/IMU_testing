@@ -82,7 +82,7 @@ def main(args):
         if config['name'] == 'deepconvlstm' or config['name'] == 'attendanddiscriminate':
             t_losses, v_losses, v_mAP, v_preds, v_gt = run_inertial_network(train_sbjs, val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run)
         elif config['name'] == 'actionformer':
-            t_losses, v_losses, v_mAP, v_preds, v_gt = run_actionformer(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run)
+            t_losses, v_losses, v_mAP, v_preds, v_gt = run_actionformer(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run, args)
         elif config['name'] == 'tridet':
             t_losses, v_losses, v_mAP, v_preds, v_gt = run_tridet(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run)
         
@@ -171,6 +171,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='./configs/60_frames_30_stride/tridet_combined.yaml')
+    parser.add_argument('--config_mae', default=None)
     parser.add_argument('--eval_type', default='split')
     parser.add_argument('--neptune', default=False, type=bool)
     parser.add_argument('--run_id', default='test', type=str)
@@ -178,6 +179,18 @@ if __name__ == '__main__':
     parser.add_argument('--ckpt-freq', default=-1, type=int)
     parser.add_argument('--resume', default='', type=str)
     parser.add_argument('--gpu', default='cuda:0', type=str)
+
+    # For AudioMAE compatibility 
+    parser.add_argument('--finetune', default='',
+                        help='finetune from checkpoint')
+    parser.add_argument('--audio_exp', action='store_true', help='audio exp')
+    parser.add_argument('--seconds', type=int, default=2)
+    parser.add_argument('--matrix_type', type=str, default='64x64')
+    parser.add_argument('--use_custom_patch', type=bool, default=False, help='use custom patch with overlapping and override timm PatchEmbed')
+    parser.add_argument('--eval', action='store_true',
+                    help='Perform evaluation only')
+
+    parser.set_defaults(audio_exp=True)
     args = parser.parse_args()
     main(args)  
 

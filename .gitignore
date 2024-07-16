@@ -4,18 +4,7 @@ __pycache__/
 *$py.class
 .vscode/
 output_dir/
-reports/experiments/audio_mae/epic100_exp/*/checkpoint*
-reports/experiments/audio_mae/epic100_exp/*/events*
-reports/experiments/audio_mae/epic100_exp/*/inf*
-reports/experiments/audio_mae/epic100_exp/finetune/*/checkpoint*
-reports/experiments/audio_mae/epic100_exp/finetune/*/events*
-reports/experiments/audio_mae/epic100_exp/finetune/*/inf*
-reports/experiments/audio_mae/wear/pretrain/*/checkpoint*
-reports/experiments/audio_mae/wear/pretrain/*/events*
-reports/experiments/audio_mae/wear/pretrain/*/inf*
-reports/experiments/audio_mae/wear/finetune/*/checkpoint*
-reports/experiments/audio_mae/wear/finetune/*/events*
-reports/experiments/audio_mae/wear/finetune/*/inf*
+reports/experiments/
 # C extensions
 *.so
 
@@ -171,3 +160,9 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+data/WEAR/sec_2/mean_std/accl_mean_16x64.pt
+data/WEAR/sec_2/mean_std/accl_mean_32x64.pt
+data/WEAR/sec_2/mean_std/accl_mean_64x64.pt
+data/WEAR/sec_2/mean_std/accl_std_16x64.pt
+data/WEAR/sec_2/mean_std/accl_std_32x64.pt
+data/WEAR/sec_2/mean_std/accl_std_64x64.pt

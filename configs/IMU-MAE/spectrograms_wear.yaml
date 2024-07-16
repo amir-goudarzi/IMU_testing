@@ -1,0 +1,73 @@
+device: 'cuda:0'
+dataset: {
+  name: 'WEAR',
+  root_dir: '/data2/WEAR',
+  annotations_dir: './data/WEAR/annotations/crossval_refactored',
+  filename_training: wear_split_1.pkl,
+  file_prefix: ~,
+  file_ext: .npy,
+  num_classes: 18,
+  sampling_rate: 50
+}
+mean_std: {
+  save_path: 'data/WEAR/sec_2/mean_std'
+}
+spectrogram_params: {
+  sec_2: {
+    64x64: {
+        downsampling_rate: 50,
+        window_size: 2,
+        overlap_in_s: 1,
+        n_fft: 128,
+        hop_length: 2,
+        resizes: !!python/tuple [64, 64]
+      },
+      32x64: {
+        downsampling_rate: 50,
+        window_size: 2,
+        overlap_in_s: 1,
+        n_fft: 64,
+        hop_length: 2,
+        resizes: !!python/tuple [32, 64]
+      },
+      16x64: {
+          downsampling_rate: 50,
+          window_size: 2,
+          overlap_in_s: 1,
+          n_fft: 32,
+          hop_length: 2,
+          resizes: !!python/tuple [16, 64]
+      },
+  }
+}
+model: {
+  name: 'vit_small_patch',
+  in_chans: 12,
+  embed_dim: 384,
+  depth: 12,
+  mask_ratio: 0.9,
+  mask_2d: True,
+  mask_t_prob: 0.2,
+  mask_f_prob: 0.2,
+  mixup: 0.5,
+  drop_path: 0.1,
+  global_pool: True,
+  pretrain: False,
+  use_custom_patch: False,
+  classification: False,
+  alpha: 0.9,
+  mode: 0,
+  split_pos: False,
+  pos_trainable: False,
+  decoder_mode: 1,
+  no_shift: False,
+  use_nce: False,
+  norm_pix_loss: True,
+  audio_exp: False,
+  64x64: {
+    patch_size: !!python/tuple [8, 8],
+  },
+  32x64: {
+    patch_size: !!python/tuple [8, 8],
+  },
+}

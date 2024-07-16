@@ -4,13 +4,13 @@ train_split: ['training']
 val_split: ['validation']
 devices: ['cuda:0']
 anno_json: [
-  'data/wear/annotations/wear_split_1.json',
-  'data/wear/annotations/wear_split_2.json',
-  'data/wear/annotations/wear_split_3.json'
+  '/data2/WEAR/annotations/wear_split_1.json',
+  '/data2/WEAR/annotations/wear_split_2.json',
+  '/data2/WEAR/annotations/wear_split_3.json'
 ]
 dataset: {
-  feat_folder: ./data/wear/processed/combined_features/60_frames_30_stride,
-  sens_folder: ./data/wear/raw/inertial,
+  feat_folder: /data2/WEAR/processed/combined_features/60_frames_30_stride,
+  sens_folder: /data2/WEAR/raw/inertial,
   sampling_rate: 50,
   file_prefix: ~,
   file_ext: .npy,

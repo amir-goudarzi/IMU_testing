@@ -6,16 +6,10 @@ from torch.utils.data import DataLoader
 import os
 from data.wear_dataset_ssl import WearDatasetSSL
 from data.wear_dataset import WearDataset
+import numpy as np
+from utils.os_utils import load_config
+import argparse
 
-
-# root_dir = os.path.join('/data', 'EPIC-KITCHENS')
-# annotations_dir = os.path.join('data', 'annotations')
-# train = True
-# filename_training = 'EPIC_100_train_clean.pkl'
-root_dir = os.path.join('/data2', 'WEAR')
-annotations_dir = os.path.join('data', 'WEAR', 'annotations')
-train = True
-filename_training = 'wear_annotations_refactored_train.pkl'
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(DEVICE)
 
@@ -50,8 +44,9 @@ std = [15.9730, 14.1860, 13.3603, 19.5357, 18.3608, 17.5932, 17.9725, 17.0493,
         15.6102, 17.7609, 16.9667, 15.5691]
 '''
 
-
-if __name__ == '__main__':
+def main(args, matrix_type='64x64', seconds=2):
+    config = load_config(args.config)
+    spectrogram_cfg = config['spectrogram_params'][f'sec_{seconds}'][matrix_type]
     # data = EpicDatasetSSL(
     #     src_dir=root_dir,
     #     annotations=annotations_dir,
@@ -80,15 +75,22 @@ if __name__ == '__main__':
     #     )
 
     data = WearDataset(
-        src_dir=root_dir,
-        annotations=annotations_dir,
-        filename=filename_training
-        )
+        src_dir=config['dataset']['root_dir'],
+        annotations=config['dataset']['annotations_dir'],
+        filename=config['dataset']['filename_training'],
+        window_size=spectrogram_cfg['window_size'],
+        overlap_in_s=spectrogram_cfg['overlap_in_s'],
+        n_fft=spectrogram_cfg['n_fft'],
+        hop_length=spectrogram_cfg['hop_length'],
+        sampling_rate=config['dataset']['sampling_rate'],
+        downsampling_rate=spectrogram_cfg['downsampling_rate'],
+        resizes=spectrogram_cfg['resizes']
+    )
 
 
     # Create a data loader
     batch_size = 32
-    dataloader = DataLoader(data, batch_size=batch_size, shuffle=train)
+    dataloader = DataLoader(data, batch_size=batch_size, shuffle=True)
 
     accl_stats = {
         'psum': torch.zeros(3).to(DEVICE),
@@ -104,7 +106,8 @@ if __name__ == '__main__':
     dataset_len = len(data.annotations)
     accl_tot = None
 
-    for i, data in enumerate(dataloader):
+    # for i, data in enumerate(dataloader):
+    for i, (data, _) in enumerate(dataloader):
         accl = data.to(DEVICE)
         if accl_tot is None:
             accl_tot = accl
@@ -142,4 +145,20 @@ if __name__ == '__main__':
     accl_mean = accl_tot.mean(dim=(0, 2, 3))
     accl_std = accl_tot.std(dim=(0, 2, 3))
     print(f'{accl_mean=}, {accl_std=}')
+
+    save_path = config['mean_std']['save_path']
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    torch.save(accl_mean, os.path.join(save_path, f'accl_mean_{matrix_type}.pt'))
+    torch.save(accl_std, os.path.join(save_path, f'accl_std_{matrix_type}.pt'))
     # print(f'{gyro_mean=}, {gyro_std=}')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Compute mean and std for the dataset')
+    parser.add_argument('--config', default='./configs/IMU-MAE/spectrograms_wear.yaml')
+    args = parser.parse_args()
+    matrix_type = '16x64'
+    seconds = 2
+    main(args, matrix_type=matrix_type, seconds=seconds)

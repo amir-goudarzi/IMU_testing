@@ -22,7 +22,7 @@ from .util.patch_embed import PatchEmbed_new, PatchEmbed3D_new
 class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
     """ Vision Transformer with support for global average pooling
     """
-    def __init__(self, global_pool=False, mask_2d=True, use_custom_patch=False, **kwargs):
+    def __init__(self, global_pool=False, mask_2d=True, use_custom_patch=False, classification=True, **kwargs):
         super(VisionTransformer, self).__init__(**kwargs)
 
         self.global_pool = global_pool
@@ -33,6 +33,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         del self.norm  # remove the original norm
         self.mask_2d = mask_2d
         self.use_custom_patch = use_custom_patch
+        self.classification = classification
         num_heads=12
         depth=12
         mlp_ratio=4
@@ -176,12 +177,13 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
 
     # overwrite original timm
-    def forward(self, x, v=None, mask_t_prob=0.0, mask_f_prob=0.0, classification=True):
+    # FIXME: classification was a parameter before. It has been moved into __init__.
+    def forward(self, x, v=None, mask_t_prob=0.0, mask_f_prob=0.0):
         if mask_t_prob > 0.0 or mask_f_prob > 0.0:
             x = self.forward_features_mask(x, mask_t_prob=mask_t_prob, mask_f_prob=mask_f_prob)
         else:
             x = self.forward_features(x)
-        if classification:
+        if self.classification:
             x = self.head(x)
         return x
 

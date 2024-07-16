@@ -1,4 +1,6 @@
 import math
+import sys
+import os
 
 import torch
 from torch import nn
@@ -7,8 +9,13 @@ from torch.nn import functional as F
 from .models import register_meta_arch, make_backbone, make_neck, make_generator
 from .blocks import MaskedConv1D, Scale, LayerNorm
 from .losses import ctr_diou_loss_1d, sigmoid_focal_loss
-
 from ..utils import batched_nms
+
+sys.path.append(os.path.join('..', '..'))    # Uncomment this line when running via the main script
+# sys.path.append(os.path.join('src'))              # Uncomment this line in debug mode
+from audiomae_pretrain import modeling
+from utils.os_utils import load_config
+from features.imu_preprocessing import SpectrogramsGenerator
 
 class PtTransformerClsHead(nn.Module):
     """
@@ -166,6 +173,7 @@ class PtTransformer(nn.Module):
     """
     def __init__(
         self,
+        args,
         model_name,
         backbone_type,         # a string defines which backbone we use
         fpn_type,              # a string defines which fpn we use
@@ -191,7 +199,7 @@ class PtTransformer(nn.Module):
         use_rel_pe,            # if to use rel position encoding
         num_classes,           # number of action classes
         train_cfg,             # other cfg for training
-        test_cfg               # other cfg for testing
+        test_cfg,              # other cfg for testing
     ):
         super().__init__()
         self.model_name = model_name
@@ -247,6 +255,31 @@ class PtTransformer(nn.Module):
         # we will need a better way to dispatch the params to backbones / necks
         # backbone network: conv + transformer
         assert backbone_type in ['convTransformer', 'conv']
+
+        if args.config_mae:
+            mae_cfg = load_config(args.config_mae)
+            mae_specgram_cfg = mae_cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]# Spectrograms config
+            self.mae_cfg = mae_cfg
+            input_dim = mae_cfg['model']['embed_dim'] + 2048    # Match the new inertial features with AudioMAE ones.
+            self.mae_cfg['seconds'] = args.seconds
+            self.seconds_bin = self.mae_cfg['seconds'] * self.mae_cfg['dataset']['sampling_rate'] * self.mae_cfg['model']['in_chans']
+            self.CH, self.T = self.mae_cfg['model']['in_chans'], self.seconds_bin // self.mae_cfg['model']['in_chans']
+            # self.transforms = SpectrogramsGenerator(
+            #     window_size=mae_specgram_cfg['window_size'],
+            #     overlap_in_s=mae_specgram_cfg['overlap_in_s'],
+            #     n_fft=mae_specgram_cfg['n_fft'],
+            #     hop_length=mae_specgram_cfg['hop_length'],
+            #     sampling_rate=mae_cfg['dataset']['sampling_rate'],
+            #     downsampling_rate=mae_specgram_cfg['downsampling_rate'],
+            #     resizes=mae_specgram_cfg['resizes']
+            # )
+
+            # self.mae_backbone = modeling(args, mae_cfg, device='cuda')
+            # self.mae_backbone = self.mae_backbone.load_state_dict(torch.load(args.finetune)['model'])
+            # self.mae_backbone.eval()
+            # for param in self.mae_backbone.parameters():
+            #     param.requires_grad = False # Freeze the MAE model
+
         if backbone_type == 'convTransformer':
             self.backbone = make_backbone(
                 'convTransformer',
@@ -332,10 +365,13 @@ class PtTransformer(nn.Module):
         # will throw an error if parameters are on different devices
         return list(set(p.device for p in self.parameters()))[0]
 
-    def forward(self, video_list):
+    def forward(self, video_list, mae_fn=None):
         # batch the video list into feats (B, C, T) and masks (B, 1, T)
         batched_inputs, batched_masks = self.preprocessing(video_list)
-
+        
+        if mae_fn is not None:
+            batched_inputs = self.audiomae_features(batched_inputs, mae_fn)
+            
         # forward the network (backbone -> neck -> heads)
         feats, masks = self.backbone(batched_inputs, batched_masks)
         fpn_feats, fpn_masks = self.neck(feats, masks)
@@ -386,6 +422,23 @@ class PtTransformer(nn.Module):
                 out_cls_logits, out_offsets
             )
             return losses, results
+    
+    @torch.no_grad()
+    def audiomae_features(self, batched_inputs: torch.Tensor, mae_fn) -> torch.Tensor:
+        """
+        Compute the audio features from the MAE model.
+        It calculates spectrograms for each input, then forward the MAE model, which
+        outputs the new feature embeddings instead of RAW ones.
+        """
+        B, C, T = batched_inputs.shape
+        tmp = batched_inputs[:, :self.seconds_bin, :].detach()
+        tmp = tmp.permute(0, 2, 1) # from (B, C, T) to (B, T, C)
+
+        tmp = tmp.reshape(-1, self.CH, self.T)
+        x = mae_fn(tmp)
+        x = torch.reshape(x, (B,T, x.shape[-1])).permute(0, 2, 1)
+        audio_feats = torch.cat((x, batched_inputs[:, self.seconds_bin:, :]), dim=1)
+        return audio_feats
 
     @torch.no_grad()
     def preprocessing(self, video_list, padding_val=0.0):

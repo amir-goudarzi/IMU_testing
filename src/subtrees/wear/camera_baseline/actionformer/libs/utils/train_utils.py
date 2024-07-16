@@ -45,6 +45,7 @@ def make_optimizer(model, optimizer_config):
     for mn, m in model.named_modules():
         for pn, p in m.named_parameters():
             fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
+
             if pn.endswith('bias'):
                 # all biases will not be decayed
                 no_decay.add(fpn)
@@ -59,6 +60,8 @@ def make_optimizer(model, optimizer_config):
                 no_decay.add(fpn)
             elif pn.endswith('rel_pe'):
                 # corner case for relative position encoding
+                no_decay.add(fpn)
+            elif mn.startswith('module.mae_backbone'):
                 no_decay.add(fpn)
 
     # validate that we considered every parameter
@@ -214,7 +217,7 @@ class ModelEma(torch.nn.Module):
 
 
 ################################################################################
-def train_one_epoch(train_loader, model, optimizer, scheduler, model_ema = None, clip_grad_l2norm = -1):
+def train_one_epoch(train_loader, model, optimizer, scheduler, model_ema = None, clip_grad_l2norm = -1, model_mae=None):
     """Training the model for one epoch"""
     # set up meters
     batch_time = AverageMeter()
@@ -223,14 +226,18 @@ def train_one_epoch(train_loader, model, optimizer, scheduler, model_ema = None,
     num_iters = len(train_loader)
     # switch to train mode
     model.train()
-
+    if model_mae is not None:
+        model_mae.eval()
+        for param in model_mae.parameters():
+            param.requires_grad = False
+            
     # main training loop
     start = time.time()
     for iter_idx, video_list in enumerate(train_loader, 0):
         # zero out optim
         optimizer.zero_grad(set_to_none=True)
         # forward / backward the model
-        losses = model(video_list)
+        losses = model(video_list, model_mae)
         losses['final_loss'].backward()
         # gradient cliping (to stabilize training if necessary)
         if clip_grad_l2norm > 0.0:
@@ -258,10 +265,16 @@ def train_one_epoch(train_loader, model, optimizer, scheduler, model_ema = None,
     return losses_tracker['final_loss'].avg
 
 
-def valid_one_epoch(val_loader, model):
+def valid_one_epoch(val_loader, model, model_mae=None):
     """Test the model on the validation set"""
     # switch to evaluate mode
     model.eval()
+    
+    if model_mae is not None:
+        model_mae.eval()
+        for param in model_mae.parameters():
+            param.requires_grad = False
+            
     # dict for results (for our evaluation code)
     results = {
         'video-id': [],
@@ -276,7 +289,7 @@ def valid_one_epoch(val_loader, model):
     for _, video_list in enumerate(val_loader, 0):
         # forward the model (wo. grad)
         with torch.no_grad():
-            losses, output = model(video_list)
+            losses, output = model(video_list, model_mae)
             # unpack the results into ANet format
             num_vids = len(output)
             for vid_idx in range(num_vids):

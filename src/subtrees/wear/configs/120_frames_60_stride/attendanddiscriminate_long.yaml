@@ -2,12 +2,12 @@ name: attendanddiscriminate
 dataset_name: wear
 devices: ['cuda:0']
 anno_json: [
-  'data/wear/annotations/wear_split_1.json',
-  'data/wear/annotations/wear_split_2.json',
-  'data/wear/annotations/wear_split_3.json'
+  '/data2/WEAR/annotations/wear_split_1.json',
+  '/data2/WEAR/annotations/wear_split_2.json',
+  '/data2/WEAR/annotations/wear_split_3.json'
 ]
 dataset: {
-  sens_folder: ./data/wear/raw/inertial,
+  sens_folder: /data2/WEAR/raw/inertial,
   input_dim: 12,
   sampling_rate: 50,
   num_classes: 18,

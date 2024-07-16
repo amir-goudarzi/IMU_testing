@@ -265,7 +265,7 @@ class MaskedAutoencoderViT(nn.Module):
             T=101
             F=12
         else:
-            T=64
+            T=8
             F=8
         #x = x.reshape(N, T, F, D)
         len_keep_t = int(T * (1 - mask_t_prob))

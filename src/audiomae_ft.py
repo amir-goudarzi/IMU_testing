@@ -48,6 +48,7 @@ from torch.utils.data import WeightedRandomSampler
 from data.epic_dataset import EpicDataset
 from data.wear_dataset import WearDataset
 import torchvision.transforms as transforms
+from utils.os_utils import load_config
 
 
 def get_args_parser():
@@ -234,6 +235,88 @@ class PatchEmbed_new(nn.Module):
         x = x.flatten(2).transpose(1, 2)
         return x
 
+def modeling(
+        seconds,
+        matrix_type,
+        audio_exp,
+        cfg,
+        finetune,
+        eval):
+    specgram_cfg = cfg['spectrogram_params'][f'sec_{seconds}'][matrix_type]
+
+    model_dict = {attr: getattr(models_vit, attr) for attr in dir(models_vit)}
+    model_name = cfg['model']['name'] + str(cfg['model'][matrix_type]['patch_size'][0])
+    model = model_dict[model_name](
+        num_classes=cfg['dataset']['num_classes'],
+        drop_path_rate=cfg['model']['drop_path'],
+        global_pool=cfg['model']['global_pool'],
+        mask_2d=cfg['model']['mask_2d'],
+        use_custom_patch=cfg['model']['use_custom_patch'],
+        classification=cfg['model']['classification'],
+        ## remove video part for A-MAE
+        #load_video=args.load_video,
+        # n_frm=args.n_frm,
+        #split_pos=args.split_pos,
+        #av_fusion=args.av_fusion,
+    )
+    if audio_exp:
+        img_size=(1024,128) # 1024, 128
+        in_chans=1
+        emb_dim = 768
+        if "vit_small_patch" in model_name:
+            emb_dim = 384
+        if cfg['model']['use_custom_patch']:
+            model.patch_embed = PatchEmbed_new(img_size=img_size, patch_size=16, in_chans=1, embed_dim=emb_dim, stride=10)
+            model.pos_embed = nn.Parameter(torch.zeros(1, 1212 + 1, emb_dim), requires_grad=False)  # fixed sin-cos embedding
+        else:
+            model.patch_embed = PatchEmbed_new(img_size=img_size, patch_size=(16,16), in_chans=1, embed_dim=emb_dim, stride=16) # no overlap. stride=img_size=16
+            num_patches = model.patch_embed.num_patches
+            #num_patches = 512 # assume audioset, 1024//16=64, 128//16=8, 512=64x8
+            model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim), requires_grad=False)  # fixed sin-cos embedding
+    else:
+        # audio_exp = False for EPIC-KITCHENS
+        img_size = specgram_cfg['resizes']
+        patch_size = cfg['model'][matrix_type]['patch_size']
+        in_chans = cfg['model']['in_chans'] # 6 for EPIC-KITCHENS, 12 for WEAR
+        emb_dim = cfg['model']['embed_dim']
+        stride = patch_size[0]
+        num_patches = img_size[0]//patch_size[0] * img_size[1]//patch_size[1]
+
+        if cfg['model']['use_custom_patch']:
+            model.patch_embed = PatchEmbed_new(img_size=img_size,
+                                                  patch_size=16,
+                                                  in_chans=in_chans,
+                                                  embed_dim=emb_dim,
+                                                  stride=10)
+            model.pos_embed = nn.Parameter(torch.zeros(1, 1212 + 1, emb_dim), requires_grad=False)
+        else:
+            model.patch_embed = PatchEmbed_new(img_size=img_size,
+                                                  patch_size=patch_size,
+                                                  in_chans=in_chans,
+                                                  embed_dim=emb_dim,
+                                                  stride=stride)
+            num_patches = model.patch_embed.num_patches
+            model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim), requires_grad=False)
+
+    if finetune:
+        checkpoint = torch.load(finetune, map_location='cpu')
+        print("Load pre-trained checkpoint from: %s" % finetune)
+        checkpoint_model = checkpoint['model']
+        state_dict = model.state_dict()
+
+        if not eval:
+            for k in ['head.weight', 'head.bias']:
+                if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
+                    print(f"Removing key {k} from pretrained checkpoint")
+                    del checkpoint_model[k]
+        # load pre-trained model
+        msg = model.load_state_dict(checkpoint_model, strict=False)
+        print(msg)
+
+        # manually initialize fc layer
+        if not eval:
+            trunc_normal_(model.head.weight, std=2e-5)
+    return model
 
 def main(args):
     misc.init_distributed_mode(args)
@@ -249,6 +332,10 @@ def main(args):
     np.random.seed(seed)
 
     cudnn.benchmark = True
+
+    config = load_config(args.config)
+    spectrogram_cfg = config['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
+    
     if args.dataset == "epic":
         root_dir = os.path.join('/data', 'EPIC-KITCHENS')
         annotations_dir = os.path.join('data', 'annotations')
@@ -381,80 +468,8 @@ def main(args):
             mixup_alpha=args.mixup, cutmix_alpha=args.cutmix, cutmix_minmax=args.cutmix_minmax,
             prob=args.mixup_prob, switch_prob=args.mixup_switch_prob, mode=args.mixup_mode,
             label_smoothing=args.smoothing, num_classes=args.nb_classes)
-    
-    model_dict = {attr: getattr(models_vit, attr) for attr in dir(models_vit)}
-    model = model_dict[args.model](
-        num_classes=args.nb_classes,
-        drop_path_rate=args.drop_path,
-        global_pool=args.global_pool,
-        mask_2d=args.mask_2d,
-        use_custom_patch=args.use_custom_patch,
-        ## remove video part for A-MAE
-        #load_video=args.load_video,
-        # n_frm=args.n_frm,
-        #split_pos=args.split_pos,
-        #av_fusion=args.av_fusion,
-    )
-    if args.audio_exp:
-        img_size=(1024,128) # 1024, 128
-        in_chans=1
-        emb_dim = 768
-        if args.model.contains("vit_small_patch"):
-            emb_dim = 384
-        if args.use_custom_patch:
-            model.patch_embed = PatchEmbed_new(img_size=img_size, patch_size=16, in_chans=1, embed_dim=emb_dim, stride=10)
-            model.pos_embed = nn.Parameter(torch.zeros(1, 1212 + 1, emb_dim), requires_grad=False)  # fixed sin-cos embedding
-        else:
-            model.patch_embed = PatchEmbed_new(img_size=img_size, patch_size=(16,16), in_chans=1, embed_dim=emb_dim, stride=16) # no overlap. stride=img_size=16
-            num_patches = model.patch_embed.num_patches
-            #num_patches = 512 # assume audioset, 1024//16=64, 128//16=8, 512=64x8
-            model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim), requires_grad=False)  # fixed sin-cos embedding
-    else:
-        # audio_exp = False for EPIC-KITCHENS
-        img_size = (64,64)
-        patch_size = (8,8)
-        in_chans = 6 if args.dataset == "epic" else 12 # 6 for EPIC-KITCHENS, 12 for WEAR
-        emb_dim = 768
-        stride = patch_size[0]
-        num_patches = img_size[0]//patch_size[0] * img_size[1]//patch_size[1]
 
-        if args.model == f"vit_small_patch{patch_size[0]}":
-            emb_dim = 384
-        if args.use_custom_patch:
-            model.patch_embed = PatchEmbed_new(img_size=img_size,
-                                                  patch_size=16,
-                                                  in_chans=in_chans,
-                                                  embed_dim=emb_dim,
-                                                  stride=10)
-            model.pos_embed = nn.Parameter(torch.zeros(1, 1212 + 1, emb_dim), requires_grad=False)
-        else:
-            model.patch_embed = PatchEmbed_new(img_size=img_size,
-                                                  patch_size=patch_size,
-                                                  in_chans=in_chans,
-                                                  embed_dim=emb_dim,
-                                                  stride=stride)
-            num_patches = model.patch_embed.num_patches
-            model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim), requires_grad=False)
-
-    if args.finetune:
-        checkpoint = torch.load(args.finetune, map_location='cpu')
-        print("Load pre-trained checkpoint from: %s" % args.finetune)
-        checkpoint_model = checkpoint['model']
-        state_dict = model.state_dict()
-
-        if not args.eval:
-            for k in ['head.weight', 'head.bias']:
-                if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-                    print(f"Removing key {k} from pretrained checkpoint")
-                    del checkpoint_model[k]
-        # load pre-trained model
-        msg = model.load_state_dict(checkpoint_model, strict=False)
-        print(msg)
-
-        # manually initialize fc layer
-        if not args.eval:
-            trunc_normal_(model.head.weight, std=2e-5)
-
+    model = modeling(args, config, device)
     model.to(device)
 
     model_without_ddp = model

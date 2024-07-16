@@ -34,6 +34,7 @@ from subtrees.AudioMAE.engine_pretrain import train_one_epoch
 from subtrees.AudioMAE.models_mae import MaskedAutoencoderViT
 from data.epic_dataset_ssl import EpicDatasetSSL, load_epic_ssl
 from data.wear_dataset_ssl import WearDatasetSSL
+from utils.os_utils import load_config
 
 # DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -124,7 +125,7 @@ def get_args_parser():
     parser.add_argument('--mode', default=0, type=int,help='contrastive mode')
     parser.add_argument('--save_every_epoch', default=20, type=int,help='save_every_epoch')
     parser.add_argument('--use_custom_patch', type=bool, default=False, help='use custom patch and override timm PatchEmbed')
-    #parser.add_argument("--distributed", type=bool, default=True)
+    parser.add_argument("--distributed", type=bool, default=True)
     parser.add_argument('--roll_mag_aug', type=bool, default=False, help='use roll_mag_aug')	
     parser.add_argument('--split_pos', type=bool, default=False, help='use splitted pos emb')	
     parser.add_argument('--pos_trainable', type=bool, default=False, help='use trainable pos emb')	
@@ -144,9 +145,41 @@ def get_args_parser():
     parser.set_defaults(audio_exp=True)
     parser.add_argument('--no_shift', type=bool, default=False, help='no_shift')
 
+    parser.add_argument('--config', type=str, default='config.yaml')
+    parser.add_argument('--seconds', type=int, default=2)
+    parser.add_argument('--matrix_type', type=str, default='64x64')
+    parser.add_argument("--filename_split", type=str, default='wear_split_1.pkl', help="filename for split")
     # set norm_pix_loss=True for normal training, norm_pix_loss=False for visualization
     parser.set_defaults(norm_pix_loss=True)
     return parser
+
+
+def modeling(
+        seconds,
+        matrix_type,
+        audio_exp,
+        cfg):
+    specgram_cfg = cfg['spectrogram_params'][f'sec_{seconds}'][matrix_type]
+    model_dict = {attr: getattr(models_mae, attr) for attr in dir(models_mae)}
+    model_name = cfg['model']['name'] + str(cfg['model'][matrix_type]['patch_size'][0])
+    # define the model
+    if audio_exp:
+        model = model_dict[model_name](norm_pix_loss=cfg['model']['norm_pix_loss'], 	
+                                            in_chans=cfg['model']['in_chans'], audio_exp=True,	
+                                            img_size=specgram_cfg['resizes'][0],	
+                                            alpha=cfg['model']['alpha'], mode=cfg['model']['mode'],
+                                            use_custom_patch=cfg['model']['use_custom_patch'],	
+                                            split_pos=cfg['model']['split_pos'], pos_trainable=cfg['model']['pos_trainable'], use_nce=cfg['model']['use_nce'],
+                                            decoder_mode=cfg['model']['decoder_mode'], 
+                                            mask_2d=cfg['model']['mask_2d'], mask_t_prob=cfg['model']['mask_t_prob'], mask_f_prob=cfg['model']['mask_f_prob'], 
+                                            no_shift=cfg['model']['no_shift'],
+                                            # remove for A-MAE
+                                            #v_weight=args.v_weight, n_frm=args.n_frm, video_only=args.video_only, cl=args.cl, depth_av=args.depth_av,
+                                            )
+    else:
+        model = model_dict[model_name](norm_pix_loss=cfg['model']['norm_pix_loss'])
+
+    return model
 
 
 def main(args):
@@ -183,44 +216,30 @@ def main(args):
             transforms_gyro=transforms.Normalize(mean=[-42.8106, -42.6817, -43.3577], std=[13.2689, 12.8669, 11.9387]),
         )
     elif args.dataset == 'wear':
-        root_dir = os.path.join('/data2', 'WEAR')
-        annotations_dir = os.path.join('data', 'WEAR', 'annotations')
-        filename_training = 'wear_annotations_refactored_train.pkl'
         num_chans = 12
 
+        config = load_config(args.config)
+        spectrogram_cfg = config['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
         dataset_train = WearDatasetSSL(
-            src_dir=root_dir,
-            annotations=annotations_dir,
-            filename=filename_training,
-            transforms=transforms.Normalize(
-                mean=[-25.1615, -23.0049, -24.6689, -26.6896, -24.6670, -26.2407, -26.5644,
-                        -23.9310, -26.9497, -26.7723, -24.0176, -27.1356],
-                std=[15.8498, 14.6364, 14.0719, 19.2485, 18.4719, 17.9037, 19.2159, 18.5185,
-                        16.9717, 19.1566, 18.6452, 17.0249]),
+            src_dir=config['dataset']['root_dir'],
+            annotations=config['dataset']['annotations_dir'],
+            filename=args.filename_split,
+            window_size=spectrogram_cfg['window_size'],
+            overlap_in_s=spectrogram_cfg['overlap_in_s'],
+            n_fft=spectrogram_cfg['n_fft'],
+            hop_length=spectrogram_cfg['hop_length'],
+            sampling_rate=config['dataset']['sampling_rate'],
+            downsampling_rate=spectrogram_cfg['downsampling_rate'],
+            resizes=spectrogram_cfg['resizes']
         )
-        model_dict = {attr: getattr(models_mae, attr) for attr in dir(models_mae)}
     else:
         raise ValueError('Unknown dataset: {}'.format(args.dataset))
-
-    # define the model
-    if args.audio_exp:
-        model = model_dict[args.model](norm_pix_loss=args.norm_pix_loss, 	
-                                            in_chans=num_chans, audio_exp=True,	
-                                            img_size=64,	
-                                            alpha=args.alpha, mode=args.mode,
-                                            use_custom_patch=args.use_custom_patch,	
-                                            split_pos=args.split_pos, pos_trainable=args.pos_trainable, use_nce=args.use_nce,
-                                            decoder_mode=args.decoder_mode, 
-                                            mask_2d=args.mask_2d, mask_t_prob=args.mask_t_prob, mask_f_prob=args.mask_f_prob, 
-                                            no_shift=args.no_shift,
-                                            # remove for A-MAE
-                                            #v_weight=args.v_weight, n_frm=args.n_frm, video_only=args.video_only, cl=args.cl, depth_av=args.depth_av,
-                                            )
-    else:
-        model = model_dict[args.model](norm_pix_loss=args.norm_pix_loss)
-
-    model.to(device)
-    
+    model = modeling(
+        args.seconds,
+        args.matrix_type,
+        args.audio_exp,
+        config)
+    model.to(DEVICE)
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
         global_rank = misc.get_rank()
@@ -261,7 +280,7 @@ def main(args):
 
     if args.distributed:
         print('use distributed!!')
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+        model = torch.nn.parallel.DataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
     
     # following timm: set wd as 0 for bias and norm layers
