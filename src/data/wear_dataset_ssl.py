@@ -11,14 +11,16 @@ from torch.utils.data import Dataset
 from features.transforms import normalize_tensor, cut_and_pad
 from utils.utils import load_data, center_timestamp
 from features.imu_preprocessing import SpectrogramsGenerator
+from data.dataset import register_dataset
 
-
+@register_dataset("wear_ssl")
 class WearDatasetSSL(Dataset):
     def __init__(self,
             src_dir: os.PathLike,
             annotations: os.PathLike,
             filename: str,
             window_size=10,
+            win_length=5,
             overlap_in_s=None,
             cache_size=math.inf,
             n_fft=128,
@@ -27,6 +29,7 @@ class WearDatasetSSL(Dataset):
             downsampling_rate=25,
             use_cache=False,
             transforms=None,
+            temporal_points=None,
             resizes=(64, 64)
             ):
         self.src_dir = src_dir
@@ -41,9 +44,11 @@ class WearDatasetSSL(Dataset):
 
         self.transforms = SpectrogramsGenerator(
             window_size=window_size,
-            overlap_in_s=overlap_in_s,
             n_fft=n_fft,
+            win_length=win_length,
+            overlap_in_s=overlap_in_s,
             hop_length=hop_length,
+            temporal_points=temporal_points,
             sampling_rate=sampling_rate,
             downsampling_rate=downsampling_rate,
             transforms=transforms,

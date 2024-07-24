@@ -25,7 +25,7 @@ from timm.models.swin_transformer import SwinTransformerBlock
 class MaskedAutoencoderViT(nn.Module):
     """ Masked Autoencoder with VisionTransformer backbone
     """
-    def __init__(self, img_size=224, patch_size=16, stride=10, in_chans=3,
+    def __init__(self, img_size: int | tuple[int, int], patch_size=16, stride=10, in_chans=3,
                  embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
                  mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False, 
@@ -148,13 +148,15 @@ class MaskedAutoencoderViT(nn.Module):
         if self.audio_exp:
             pos_embed = get_2d_sincos_pos_embed_flexible(self.pos_embed.shape[-1], self.patch_embed.patch_hw, cls_token=True)    
         else:
-            pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
+            pos_embed = get_2d_sincos_pos_embed_flexible(self.pos_embed.shape[-1], self.patch_embed.patch_hw, cls_token=True)
+            # pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         if self.audio_exp:   
             decoder_pos_embed = get_2d_sincos_pos_embed_flexible(self.decoder_pos_embed.shape[-1], self.patch_embed.patch_hw, cls_token=True)
         else:
-            decoder_pos_embed = get_2d_sincos_pos_embed(self.decoder_pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
+            decoder_pos_embed = get_2d_sincos_pos_embed_flexible(self.decoder_pos_embed.shape[-1], self.patch_embed.patch_hw, cls_token=True)
+            # decoder_pos_embed = get_2d_sincos_pos_embed(self.decoder_pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
         self.decoder_pos_embed.data.copy_(torch.from_numpy(decoder_pos_embed).float().unsqueeze(0))
 
         # initialize patch_embed like nn.Linear (instead of nn.Conv2d)
@@ -205,7 +207,8 @@ class MaskedAutoencoderViT(nn.Module):
                 x = torch.einsum('nchpwq->nhwpqc', x)
                 x = x.reshape(shape=(N, h * w, p**2 * C))
         else:
-            h = w = imgs.shape[2] // p
+            h = imgs.shape[2] // p
+            w = imgs.shape[3] // p
             N, C = imgs.shape[:2]
             x = imgs.reshape(shape=(N, C, h, p, w, p))
             x = torch.einsum('nchpwq->nhwpqc', x)
@@ -265,8 +268,9 @@ class MaskedAutoencoderViT(nn.Module):
             T=101
             F=12
         else:
-            T=8
-            F=8
+            T, F = self.patch_embed.patch_hw
+            # T=8
+            # F=8
         #x = x.reshape(N, T, F, D)
         len_keep_t = int(T * (1 - mask_t_prob))
         len_keep_f = int(F * (1 - mask_f_prob))

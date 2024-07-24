@@ -6,12 +6,14 @@ from timm.models.layers import to_2tuple
 class PatchEmbed_org(nn.Module):
     """ Image to Patch Embedding
     """
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
+    def __init__(self, img_size: int | tuple[int, int], patch_size=16, in_chans=3, embed_dim=768):
         super().__init__()
-        img_size = to_2tuple(img_size)
+        if isinstance(img_size, int):
+            img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         num_patches = (img_size[1] // patch_size[1]) * (img_size[0] // patch_size[0])
-        self.patch_hw = (img_size[1] // patch_size[1], img_size[0] // patch_size[0])
+        # self.patch_hw = (img_size[1] // patch_size[1], img_size[0] // patch_size[0])
+        self.patch_hw = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = num_patches
@@ -30,9 +32,10 @@ class PatchEmbed_org(nn.Module):
 class PatchEmbed_new(nn.Module):
     """ Flexible Image to Patch Embedding
     """
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768, stride=10):
+    def __init__(self, img_size: int | tuple[int, int], patch_size=16, in_chans=3, embed_dim=768, stride=10):
         super().__init__()
-        img_size = to_2tuple(img_size)
+        if isinstance(img_size, int):
+            img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         stride = to_2tuple(stride)
         

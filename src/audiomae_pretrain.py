@@ -6,24 +6,23 @@ import os
 import sys
 import time
 from pathlib import Path
-import neptune
 import argparse
-import importlib
 sys.path.append('.')
 sys.path.append('..')
 sys.path.append(os.path.join('submodules', 'AudioMAE'))
 
 import torch
 import torch.backends.cudnn as cudnn
+from torch.distributed import init_process_group, destroy_process_group
+
 from torch.utils.tensorboard import SummaryWriter
 import torchvision.transforms as transforms
-import torchvision.datasets as datasets
+from torch.utils.data import DataLoader, DistributedSampler
 
 # assert timm.__version__ == "0.3.2"  # version check
 import timm.optim.optim_factory as optim_factory
 
 import subtrees.AudioMAE.util.misc as misc
-from subtrees.AudioMAE.util.pos_embed import interpolate_pos_embed, interpolate_pos_embed_audio, interpolate_patch_embed_audio
 from subtrees.AudioMAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
 
 import subtrees.AudioMAE.models_mae as models_mae
@@ -34,6 +33,7 @@ from subtrees.AudioMAE.engine_pretrain import train_one_epoch
 from subtrees.AudioMAE.models_mae import MaskedAutoencoderViT
 from data.epic_dataset_ssl import EpicDatasetSSL, load_epic_ssl
 from data.wear_dataset_ssl import WearDatasetSSL
+from data.egoexo4d import EgoExo4D
 from utils.os_utils import load_config
 
 # DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -82,17 +82,18 @@ def get_args_parser():
 
     parser.add_argument('--output_dir', default='./output_dir',
                         help='path where to save, empty for no saving')
-    parser.add_argument('--log_dir', default='./output_dir',
+    parser.add_argument('--log_dir', default=None,
                         help='path where to tensorboard log')
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
-    parser.add_argument('--seed', default=0, type=int)
+    parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--resume', default='',
                         help='resume from checkpoint')
 
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
     parser.add_argument('--num_workers', default=10, type=int)
+    parser.add_argument('--num_processes', default=2, type=int)
     parser.add_argument('--pin_mem', action='store_true',
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
@@ -117,7 +118,7 @@ def get_args_parser():
     parser.add_argument('--freqm', help='frequency mask max length', type=int, default=0) # pretraining 0
     parser.add_argument('--timem', help='time mask max length', type=int, default=0) # pretraining 0
     parser.add_argument("--mixup", type=float, default=0, help="how many (0-1) samples need to be mixup during training")
-    parser.add_argument("--dataset", type=str, default="epic", help="dataset", choices=["epic", "wear"])
+    parser.add_argument("--dataset", type=str, default="epic", help="dataset", choices=["epic", "wear", 'egoexo4d'])
     parser.add_argument("--use_fbank", type=bool, default=False)
     parser.add_argument("--fbank_dir", type=str, default="/checkpoint/berniehuang/ast/egs/esc50/data/ESC-50-master/fbank", help="fbank dir")
     parser.add_argument("--alpha", type=float, default=0.0, help="contrastive loss weight")
@@ -162,20 +163,31 @@ def modeling(
     specgram_cfg = cfg['spectrogram_params'][f'sec_{seconds}'][matrix_type]
     model_dict = {attr: getattr(models_mae, attr) for attr in dir(models_mae)}
     model_name = cfg['model']['name'] + str(cfg['model'][matrix_type]['patch_size'][0])
+    del cfg['model']['name']
+    del cfg['model'][matrix_type]
+
     # define the model
     if audio_exp:
-        model = model_dict[model_name](norm_pix_loss=cfg['model']['norm_pix_loss'], 	
-                                            in_chans=cfg['model']['in_chans'], audio_exp=True,	
-                                            img_size=specgram_cfg['resizes'][0],	
-                                            alpha=cfg['model']['alpha'], mode=cfg['model']['mode'],
-                                            use_custom_patch=cfg['model']['use_custom_patch'],	
-                                            split_pos=cfg['model']['split_pos'], pos_trainable=cfg['model']['pos_trainable'], use_nce=cfg['model']['use_nce'],
-                                            decoder_mode=cfg['model']['decoder_mode'], 
-                                            mask_2d=cfg['model']['mask_2d'], mask_t_prob=cfg['model']['mask_t_prob'], mask_f_prob=cfg['model']['mask_f_prob'], 
-                                            no_shift=cfg['model']['no_shift'],
-                                            # remove for A-MAE
-                                            #v_weight=args.v_weight, n_frm=args.n_frm, video_only=args.video_only, cl=args.cl, depth_av=args.depth_av,
-                                            )
+        model = model_dict[model_name](
+            # audio_exp=True,	
+            img_size=specgram_cfg['resizes'],	
+            **cfg['model']
+            # norm_pix_loss=cfg['model']['norm_pix_loss'], 	
+            # in_chans=cfg['model']['in_chans'],
+            # alpha=cfg['model']['alpha'],
+            # mode=cfg['model']['mode'],
+            # use_custom_patch=cfg['model']['use_custom_patch'],	
+            # split_pos=cfg['model']['split_pos'],
+            # pos_trainable=cfg['model']['pos_trainable'],
+            # use_nce=cfg['model']['use_nce'],
+            # decoder_mode=cfg['model']['decoder_mode'], 
+            # mask_2d=cfg['model']['mask_2d'],
+            # mask_t_prob=cfg['model']['mask_t_prob'],
+            # mask_f_prob=cfg['model']['mask_f_prob'], 
+            # no_shift=cfg['model']['no_shift'],
+            # remove for A-MAE
+            #v_weight=args.v_weight, n_frm=args.n_frm, video_only=args.video_only, cl=args.cl, depth_av=args.depth_av,
+        )
     else:
         model = model_dict[model_name](norm_pix_loss=cfg['model']['norm_pix_loss'])
 
@@ -197,11 +209,10 @@ def main(args):
 
     cudnn.benchmark = True
 
+    # torch.set_num_threads(mp.cpu_count() // args.num_processes)
 
-    DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(DEVICE)
     num_chans = None
-
+    
     if args.dataset == 'epic':
         root_dir = os.path.join('/data', 'EPIC-KITCHENS')
         annotations_dir = os.path.join('data', 'annotations')
@@ -220,30 +231,50 @@ def main(args):
 
         config = load_config(args.config)
         spectrogram_cfg = config['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
+        config['dataset']['filename'] = args.filename_split
         dataset_train = WearDatasetSSL(
-            src_dir=config['dataset']['root_dir'],
-            annotations=config['dataset']['annotations_dir'],
-            filename=args.filename_split,
-            window_size=spectrogram_cfg['window_size'],
-            overlap_in_s=spectrogram_cfg['overlap_in_s'],
-            n_fft=spectrogram_cfg['n_fft'],
-            hop_length=spectrogram_cfg['hop_length'],
-            sampling_rate=config['dataset']['sampling_rate'],
-            downsampling_rate=spectrogram_cfg['downsampling_rate'],
-            resizes=spectrogram_cfg['resizes']
+            # src_dir=config['dataset']['src_dir'],
+            # annotations=config['dataset']['annotations_dir'],
+            # filename=args.filename_split,
+            **config['dataset'],
+            **spectrogram_cfg
+            # window_size=spectrogram_cfg['window_size'],
+            # overlap_in_s=spectrogram_cfg['overlap_in_s'],
+            # n_fft=spectrogram_cfg['n_fft'],
+            # hop_length=spectrogram_cfg['hop_length'],
+            # sampling_rate=config['dataset']['sampling_rate'],
+            # downsampling_rate=spectrogram_cfg['downsampling_rate'],
+            # resizes=spectrogram_cfg['resizes']
         )
+    
+    elif args.dataset == 'egoexo4d':
+        config = load_config(args.config)
+        # config['device'] = rank
+        dataset_train = EgoExo4D(
+            task_name = config['task_name'],
+            **config['dataset'],
+            **config['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
+        )
+
     else:
         raise ValueError('Unknown dataset: {}'.format(args.dataset))
+    
+    # Create the model
     model = modeling(
         args.seconds,
         args.matrix_type,
         args.audio_exp,
         config)
-    model.to(DEVICE)
+    model.to(device)
+
+
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
         global_rank = misc.get_rank()
-        sampler_train = torch.utils.data.DistributedSampler(
+        # num_tasks = world_size
+        # global_rank = rank
+        sampler_train = DistributedSampler(
+            # dataset_train
             dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
         )
         print("Sampler_train = %s" % str(sampler_train))
@@ -256,18 +287,20 @@ def main(args):
     else:
         log_writer = None
 
-    data_loader_train = torch.utils.data.DataLoader(
+    data_loader_train = DataLoader(
         dataset_train, sampler=sampler_train,
         batch_size=args.batch_size,
-        num_workers=args.num_workers,
+        # num_workers=args.num_workers,
         pin_memory=args.pin_mem,
-        drop_last=True,
+        # drop_last=True,
+        shuffle=False
     )
 
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
 
     eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
+    # eff_batch_size = args.batch_size * args.accum_iter * world_size
     
     if args.lr is None:  # only base_lr is specified
         args.lr = args.blr * eff_batch_size / 256
@@ -277,10 +310,10 @@ def main(args):
 
     print("accumulate grad iterations: %d" % args.accum_iter)
     print("effective batch size: %d" % eff_batch_size)
-
+    
     if args.distributed:
         print('use distributed!!')
-        model = torch.nn.parallel.DataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], find_unused_parameters=True)
         model_without_ddp = model.module
     
     # following timm: set wd as 0 for bias and norm layers
@@ -289,6 +322,7 @@ def main(args):
     print(optimizer)
     loss_scaler = NativeScaler()
 
+    # Uncomment if args.resume exists
     misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
 
     print(f"Start training for {args.epochs} epochs")
@@ -300,7 +334,8 @@ def main(args):
             model, data_loader_train,
             optimizer, device, epoch, loss_scaler,
             log_writer=log_writer,
-            args=args
+            args=args,
+            task_name=config['task_name']
         )
         if args.output_dir and (epoch % args.save_every_epoch == 0 or epoch + 1 == args.epochs):
             misc.save_model(
@@ -319,11 +354,23 @@ def main(args):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
+    # destroy_process_group()
 
+def ddp_setup(rank, world_size):
+    """
+    Args:
+        rank: Unique identifier of each process
+        world_size: Total number of processes
+    """
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12356"
+    init_process_group(backend="nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
 
 if __name__ == '__main__':
     args = get_args_parser()
     args = args.parse_args()
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    
     main(args)

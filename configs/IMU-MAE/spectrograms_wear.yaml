@@ -1,13 +1,11 @@
 device: 'cuda:0'
+task_name: "imu"
 dataset: {
-  name: 'WEAR',
-  root_dir: '/data2/WEAR',
-  annotations_dir: './data/WEAR/annotations/crossval_refactored',
-  filename_training: wear_split_1.pkl,
-  file_prefix: ~,
-  file_ext: .npy,
-  num_classes: 18,
-  sampling_rate: 50
+  # name: 'WEAR',
+  src_dir: '/data2/WEAR',
+  annotations: './data/WEAR/annotations/crossval_refactored',
+  filename: wear_split_1.pkl,
+  # sampling_rate: 50
 }
 mean_std: {
   save_path: 'data/WEAR/sec_2/mean_std'
@@ -22,39 +20,49 @@ spectrogram_params: {
         hop_length: 2,
         resizes: !!python/tuple [64, 64]
       },
-      32x64: {
+    32x64: {
+      downsampling_rate: 50,
+      window_size: 2,
+      overlap_in_s: 1,
+      n_fft: 64,
+      hop_length: 2,
+      resizes: !!python/tuple [32, 64]
+    },
+    16x64: {
         downsampling_rate: 50,
         window_size: 2,
         overlap_in_s: 1,
-        n_fft: 64,
+        n_fft: 32,
         hop_length: 2,
-        resizes: !!python/tuple [32, 64]
-      },
-      16x64: {
-          downsampling_rate: 50,
-          window_size: 2,
-          overlap_in_s: 1,
-          n_fft: 32,
-          hop_length: 2,
-          resizes: !!python/tuple [16, 64]
-      },
+        resizes: !!python/tuple [16, 64]
+    },
+    128x320: {
+      downsampling_rate: 50,
+      window_size: 2,
+      n_fft: 256,
+      win_length: 24,
+      hop_length: 1,
+      sampling_rate: 50,
+      resizes: !!python/tuple [128, 320],
+      temporal_points: 160
+    }
   }
 }
 model: {
-  name: 'vit_small_patch',
+  name: 'mae_vit_small_patch',
   in_chans: 12,
-  embed_dim: 384,
-  depth: 12,
-  mask_ratio: 0.9,
-  mask_2d: True,
-  mask_t_prob: 0.2,
-  mask_f_prob: 0.2,
-  mixup: 0.5,
-  drop_path: 0.1,
-  global_pool: True,
-  pretrain: False,
+  # embed_dim: 384,
+  # depth: 12,
+  # mask_ratio: 0.9,
+  mask_2d: False,
+  # mask_t_prob: 0.2,
+  # mask_f_prob: 0.2,
+  # mixup: 0.5,
+  # drop_path: 0.1,
+  # global_pool: True,
+  # pretrain: False,
   use_custom_patch: False,
-  classification: False,
+  # classification: False,
   alpha: 0.9,
   mode: 0,
   split_pos: False,
@@ -64,10 +72,13 @@ model: {
   use_nce: False,
   norm_pix_loss: True,
   audio_exp: False,
-  64x64: {
-    patch_size: !!python/tuple [8, 8],
-  },
-  32x64: {
-    patch_size: !!python/tuple [8, 8],
+  # 64x64: {
+  #   patch_size: !!python/tuple [8, 8],
+  # },
+  # 32x64: {
+  #   patch_size: !!python/tuple [8, 8],
+  # },
+  128x320: {
+    patch_size: !!python/tuple [16, 16],
   },
 }

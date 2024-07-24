@@ -16,9 +16,11 @@ import time
 from collections import defaultdict, deque
 from pathlib import Path
 
+import accelerate.optimizer
 import torch
 import torch.distributed as dist
 from torch import inf
+import accelerate
 
 
 class SmoothedValue(object):
@@ -138,7 +140,7 @@ class MetricLogger(object):
             'data: {data}'
         ]
         if torch.cuda.is_available():
-            log_msg.append('max mem: {memory:.0f}')
+            log_msg.append('max mem: {memory:.0f}\n')
         log_msg = self.delimiter.join(log_msg)
         MB = 1024.0 * 1024.0
         for obj in iterable:
@@ -275,6 +277,28 @@ class NativeScalerWithGradNormCount:
 
     def load_state_dict(self, state_dict):
         self._scaler.load_state_dict(state_dict)
+
+class AcceleratorScalerWithGradNormCount:
+    state_dict_key = "accelerator_scaler"
+
+    def __init__(self, accelerator: accelerate.Accelerator):
+        self.accelerator = accelerator
+        self.scaler = accelerator.scaler
+    def __call__(self, loss, optimizer: accelerate.optimizer.AcceleratedOptimizer, clip_grad=None, parameters=None, create_graph=False, update_grad=True):
+        self.accelerator.backward(self.scaler.scale(loss), create_graph=create_graph)
+
+        if update_grad:
+            if clip_grad is not None:
+                assert parameters is not None
+                self.accelerator.unscale_gradients(optimizer)  # unscale the gradients of optimizer's assigned params in-place
+                norm = self.accelerator.clip_grad_norm_(parameters, clip_grad)
+            else:
+                self.accelerator.unscale_gradients(optimizer)
+                norm = get_grad_norm_(parameters)
+            optimizer.step()
+        else:
+            norm = None
+        return norm
 
 
 def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:

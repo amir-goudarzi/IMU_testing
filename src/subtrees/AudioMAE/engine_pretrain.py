@@ -11,18 +11,22 @@
 import math
 import sys
 from typing import Iterable
+from time import time
 
 import torch
 
 from .util import misc
 from .util import lr_sched
+import accelerate
 
 
 def train_one_epoch(model: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler,
                     log_writer=None,
-                    args=None):
+                    args=None,
+                    task_name=None,
+                    accelerator=None | accelerate.Accelerator):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', misc.SmoothedValue(window_size=1, fmt='{value:.6f}'))
@@ -38,31 +42,35 @@ def train_one_epoch(model: torch.nn.Module,
 
     # set model epoch
     model.epoch = epoch
+    train_forward = train_fn(task_name)
+    # loading_time = time()
     # for data_iter_step, (samples, _labels, _vids) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
     for data_iter_step, samples in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-
+        with accelerator.accumulate(model):
+        # end_loading_time = time()
+        # print("loading time: ", end_loading_time - loading_time)
 
         # we use a per iteration (instead of per epoch) lr scheduler
-        if data_iter_step % accum_iter == 0:
-            lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
+            if data_iter_step % accum_iter == 0:
+                lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
 
-
-
-        #print(samples.shape)# 64x3x224x224 for img, 64x1x512x128 for audio
-        samples = samples.to(device, non_blocking=True)
-        
-        # comment out when not debugging
-        # from fvcore.nn import FlopCountAnalysis, parameter_count_table
-        # if data_iter_step == 1:
-        #     flops = FlopCountAnalysis(model, samples)
-        #     print(flops.total())
-        #     print(parameter_count_table(model))
-
-
-        with torch.cuda.amp.autocast():
-            loss_a, _, _, _ = model(samples, mask_ratio=args.mask_ratio)
-        loss_value = loss_a.item()
-        loss_total = loss_a
+            
+            # comment out when not debugging
+            # from fvcore.nn import FlopCountAnalysis, parameter_count_table
+            
+            # if data_iter_step == 1:
+            #     flops = FlopCountAnalysis(model, samples)
+            #     print(flops.total())
+            #     print(parameter_count_table(model))
+            # model_time = time()
+            autocast = accelerator if accelerator is None else torch.cuda.amp
+            loss_value, loss_total = train_forward(model, device, samples, autocast, args)
+        # end_model_time = time()
+        # print("model time: ", end_model_time - model_time)
+        # with torch.cuda.amp.autocast():
+        #     loss_a, _, _, _ = model(samples, mask_ratio=args.mask_ratio)
+        # loss_value = loss_a.item()
+        # loss_total = loss_a
 
         if not math.isfinite(loss_value):
             print("Loss is {}, stopping training".format(loss_value))
@@ -92,10 +100,44 @@ def train_one_epoch(model: torch.nn.Module,
             log_writer.add_scalar('loss', loss_value_reduce, epoch_1000x)
             log_writer.add_scalar('lr', lr, epoch_1000x)
 
-
+        # loading_time = time()
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
+def train_fn(task_name):
+    if task_name == "imu_omnivore":
+        return imu_omnivore
+    elif task_name == "imu":
+        return imu
+    else:
+        raise NotImplementedError(f"Task {task_name} not implemented")
+
+def imu_omnivore(model, device, samples, args):
+    imu, omnivore = samples
+    imu = imu.to(device, non_blocking=True)
+    omnivore = omnivore.to(device, non_blocking=True)
+    with torch.cuda.amp.autocast():
+        emb_enc, mask, ids_restore, _ = model.forward_encoder(imu, args.mask_ratio, mask_2d=model.mask_2d)
+
+        omnivore = omnivore.repeat(1, emb_enc.shape[1], 1)
+        pred, _, _ = model.forward_decoder(emb_enc, ids_restore)  # [N, L, p*p*3]
+        
+        loss_a = model.forward_loss(imu, pred, mask, norm_pix_loss=model.norm_pix_loss)
+    loss_value = loss_a.item()
+    loss_total = loss_a
+    
+    return loss_value, loss_total
+
+
+def imu(model, device, samples, autocast, args):
+    # samples = samples.to(device, non_blocking=True)
+    with autocast.autocast():
+        samples = samples.type(torch.bfloat16)
+        loss_a, _, _, _ = model(samples, mask_ratio=args.mask_ratio)
+    loss_value = loss_a.item()
+    loss_total = loss_a
+
+    return loss_value, loss_total
