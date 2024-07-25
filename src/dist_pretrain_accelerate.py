@@ -34,16 +34,24 @@ from data.dataset import make_dataset
 def main(args):
     cfg = load_config(args.config)
 
+    # Check to choose if you want to use the SummaryWriter (Tensorboard) or not.
+    # Don't use it if you want to log with wandb.
+
+    dataloader, model, optimizer = load_train_objs(cfg, args)
+
     kwargs = GradScalerKwargs()
     accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs])
     device = accelerator.device
 
-    log_writer = None
+    if accelerator.is_main_process and args.log_dir is not None:
+        os.makedirs(args.log_dir, exist_ok=True)
+        log_writer = SummaryWriter(log_dir=args.log_dir)
+    else:
+        log_writer = None
 
-    dataloader, model, optimizer, loss_scaler = load_train_objs(cfg, args, device, world_size=accelerator.state.num_processes, accelerator=accelerator)
-
+    loss_scaler = AcceleratorScaler(accelerator=accelerator)
     dataloader, model, optimizer = accelerator.prepare(dataloader, model, optimizer)
-    accelerator.save_state(output_dir=os.path.join(args.output_dir, "accelerator_state"))
+
     for epoch in range(args.epochs):
         train_stats = train_one_epoch(
             model,
@@ -57,32 +65,41 @@ def main(args):
             task_name=cfg['task_name'],
             accelerator=accelerator
         )
+
         if args.output_dir and (epoch % args.save_every_epoch == 0 or epoch + 1 == args.epochs):
-            misc.save_model(
-                args=args, model=model, model_without_ddp=model.module, optimizer=optimizer,
-                loss_scaler=loss_scaler, epoch=epoch)
+            accelerator.save_state(output_dir=os.path.join(args.output_dir, "accelerator_state"))
+            # misc.save_model(
+            #     args=args, model=model, model_without_ddp=model.module, optimizer=optimizer,
+            #     loss_scaler=loss_scaler, epoch=epoch)
 
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                         'epoch': epoch,}
 
-        if args.output_dir and misc.is_main_process():
+        if args.output_dir and accelerator.is_main_process:
             if log_writer is not None:
                 log_writer.flush()
             with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
                 f.write(json.dumps(log_stats) + "\n")
+    accelerator.end_training()
 
-def load_train_objs(cfg, args, gpu_id, world_size, accelerator):
-    cfg['device'] = f'cuda:{gpu_id}'
+def load_train_objs(cfg, args):
 
-    train_set = make_dataset(
+    if args.dataset == 'wear_ssl':
+        train_set = make_dataset(
         name=args.dataset,
         is_pretrain=True,
-        task_name = cfg['task_name'],
-        device=gpu_id,
-        preload=False,
         **cfg['dataset'],
         **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
     )
+    else:
+        train_set = make_dataset(
+            name=args.dataset,
+            is_pretrain=True,
+            task_name = cfg['task_name'],
+            preload=True,
+            **cfg['dataset'],
+            **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
+        )
 
     dataloader = DataLoader(
         train_set,
@@ -97,8 +114,7 @@ def load_train_objs(cfg, args, gpu_id, world_size, accelerator):
         audio_exp=args.audio_exp,
         cfg=cfg
     )
-    # model = DDP(model, device_ids=[gpu_id], find_unused_parameters=True)
-    # model_without_ddp = None
+    world_size = args.nodes * args.gpus_per_node
     eff_batch_size = args.batch_size * args.accum_iter * world_size
 
     if args.lr is None:  # only base_lr is specified
@@ -107,12 +123,16 @@ def load_train_objs(cfg, args, gpu_id, world_size, accelerator):
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
     print(optimizer)
     # loss_scaler = NativeScaler()
-    loss_scaler = AcceleratorScaler(accelerator=accelerator)
+    # loss_scaler = AcceleratorScaler(accelerator=accelerator)
 
-    return dataloader, model, optimizer, loss_scaler
+    return dataloader, model, optimizer
 
 if __name__ == "__main__":
     parent_args = get_args_parser()
-    args = parent_args.parse_args()
+    parent_args.add_argument("--nodes", type=int, required=True)
+    parent_args.add_argument("--gpus_per_node", type=int, required=True)
 
+    args = parent_args.parse_args()
+    # print(args)
+    # sys.exit(0)
     main(args)

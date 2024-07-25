@@ -6,6 +6,8 @@ experiments_dir=./reports/experiments/audio_mae/$matrix_type/$dataset/pretrain
 patch=16
 model=mae_vit_small_patch$patch
 mask_ratio=0.8
+nodes=1
+gpus_per_node=2
 
 accelerate launch src/dist_pretrain_accelerate.py \
     --log_dir $experiments_dir/mask_ratio{$mask_ratio}_$model \
@@ -20,4 +22,7 @@ accelerate launch src/dist_pretrain_accelerate.py \
     --mask_ratio $mask_ratio \
     --dataset $dataset \
     --matrix_type 128x320 \
-    --seconds 2
+    --seconds 2 \
+    --nodes $nodes \
+    --gpus_per_node $gpus_per_node \
+> out.txt

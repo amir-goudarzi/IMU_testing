@@ -18,12 +18,13 @@ import torch
 from .util import misc
 from .util import lr_sched
 import accelerate
+from torch.utils.tensorboard import SummaryWriter
 
 
 def train_one_epoch(model: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler,
-                    log_writer=None,
+                    log_writer=None | SummaryWriter,
                     args=None,
                     task_name=None,
                     accelerator=None | accelerate.Accelerator):
@@ -42,65 +43,54 @@ def train_one_epoch(model: torch.nn.Module,
 
     # set model epoch
     model.epoch = epoch
+
+    #choose forward function
     train_forward = train_fn(task_name)
-    # loading_time = time()
+
     # for data_iter_step, (samples, _labels, _vids) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
     for data_iter_step, samples in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         with accelerator.accumulate(model):
-        # end_loading_time = time()
-        # print("loading time: ", end_loading_time - loading_time)
-
         # we use a per iteration (instead of per epoch) lr scheduler
             if data_iter_step % accum_iter == 0:
                 lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
 
-            
-            # comment out when not debugging
-            # from fvcore.nn import FlopCountAnalysis, parameter_count_table
-            
-            # if data_iter_step == 1:
-            #     flops = FlopCountAnalysis(model, samples)
-            #     print(flops.total())
-            #     print(parameter_count_table(model))
-            # model_time = time()
             autocast = accelerator if accelerator is None else torch.cuda.amp
             loss_value, loss_total = train_forward(model, device, samples, autocast, args)
-        # end_model_time = time()
-        # print("model time: ", end_model_time - model_time)
-        # with torch.cuda.amp.autocast():
-        #     loss_a, _, _, _ = model(samples, mask_ratio=args.mask_ratio)
-        # loss_value = loss_a.item()
-        # loss_total = loss_a
 
-        if not math.isfinite(loss_value):
-            print("Loss is {}, stopping training".format(loss_value))
-            sys.exit(1)
+            if not math.isfinite(loss_value):
+                print("Loss is {}, stopping training".format(loss_value))
+                sys.exit(1)
 
-        #loss /= accum_iter
-        loss_total = loss_total / accum_iter
-        loss_scaler(loss_total, optimizer, parameters=model.parameters(),
-                    update_grad=(data_iter_step + 1) % accum_iter == 0)
-        if (data_iter_step + 1) % accum_iter == 0:
-            optimizer.zero_grad()
+            #loss /= accum_iter
+            loss_total = loss_total / accum_iter
+            loss_scaler(loss_total, optimizer, parameters=model.parameters(),
+                        update_grad=(data_iter_step + 1) % accum_iter == 0)
+            
+            if (data_iter_step + 1) % accum_iter == 0:
+                optimizer.zero_grad()
 
-        torch.cuda.synchronize()
+        # torch.cuda.synchronize()
 
         metric_logger.update(loss=loss_value)
 
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)
 
+
         loss_value_reduce = misc.all_reduce_mean(loss_value)
 
-        if log_writer is not None and (data_iter_step + 1) % accum_iter == 0:
+        if log_writer is not None and (data_iter_step + 1) % accum_iter == 0 and accelerator.is_main_process:
             """ We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
             epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
             log_writer.add_scalar('loss', loss_value_reduce, epoch_1000x)
             log_writer.add_scalar('lr', lr, epoch_1000x)
+            # accelerator.log({
+            #     "lr": lr,
+            #     "loss": loss_value_reduce,
+            # }, step=epoch_1000x)
 
-        # loading_time = time()
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)

@@ -118,7 +118,7 @@ def get_args_parser():
     parser.add_argument('--freqm', help='frequency mask max length', type=int, default=0) # pretraining 0
     parser.add_argument('--timem', help='time mask max length', type=int, default=0) # pretraining 0
     parser.add_argument("--mixup", type=float, default=0, help="how many (0-1) samples need to be mixup during training")
-    parser.add_argument("--dataset", type=str, default="epic", help="dataset", choices=["epic", "wear", 'egoexo4d'])
+    parser.add_argument("--dataset", type=str, default="epic", help="dataset", choices=["epic", "wear", "wear_ssl", 'egoexo4d'])
     parser.add_argument("--use_fbank", type=bool, default=False)
     parser.add_argument("--fbank_dir", type=str, default="/checkpoint/berniehuang/ast/egs/esc50/data/ESC-50-master/fbank", help="fbank dir")
     parser.add_argument("--alpha", type=float, default=0.0, help="contrastive loss weight")
