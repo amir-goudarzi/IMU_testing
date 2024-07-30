@@ -35,6 +35,7 @@ from timm.models.layers import to_2tuple
 import subtrees.AudioMAE.util.misc as misc
 from subtrees.AudioMAE.util.datasets import build_dataset
 from subtrees.AudioMAE.util.pos_embed import interpolate_pos_embed, interpolate_pos_embed_audio, interpolate_patch_embed_audio, interpolate_pos_embed_img2audio
+from subtrees.AudioMAE.util.patch_embed import PatchEmbed_new
 from subtrees.AudioMAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
 import subtrees.AudioMAE.util.lr_decay as lrd
 
@@ -200,40 +201,17 @@ def get_args_parser():
     return parser
 
 
-class PatchEmbed_new(nn.Module):
-    """ Flexible Image to Patch Embedding
-    """
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768, stride=10):
-        super().__init__()
-        img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
-        stride = to_2tuple(stride)
-        
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.in_chans = in_chans
+def get_mixup(args):
+    mixup_fn = None
+    mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
+    if mixup_active:
+        print("Mixup is activated!")
+        mixup_fn = Mixup(
+            mixup_alpha=args.mixup, cutmix_alpha=args.cutmix, cutmix_minmax=args.cutmix_minmax,
+            prob=args.mixup_prob, switch_prob=args.mixup_switch_prob, mode=args.mixup_mode,
+            label_smoothing=args.smoothing, num_classes=args.nb_classes)
+    return mixup_fn
 
-        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=stride) # with overlapped patches
-        #self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
-
-        #self.patch_hw = (img_size[1] // patch_size[1], img_size[0] // patch_size[0])
-        #self.num_patches = (img_size[1] // patch_size[1]) * (img_size[0] // patch_size[0])
-        _, _, h, w = self.get_output_shape(img_size) # n, emb_dim, h, w
-        self.patch_hw = (h, w)
-        self.num_patches = h*w
-
-    def get_output_shape(self, img_size):
-        # todo: don't be lazy..
-        return self.proj(torch.randn(1, self.in_chans, img_size[0], img_size[1])).shape 
-
-    def forward(self, x):
-        B, C, H, W = x.shape
-        # FIXME look at relaxing size constraints
-        #assert H == self.img_size[0] and W == self.img_size[1], \
-        #    f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
-        x = self.proj(x)
-        x = x.flatten(2).transpose(1, 2)
-        return x
 
 def modeling(
         seconds,
@@ -243,62 +221,30 @@ def modeling(
         finetune,
         eval):
     specgram_cfg = cfg['spectrogram_params'][f'sec_{seconds}'][matrix_type]
-
     model_dict = {attr: getattr(models_vit, attr) for attr in dir(models_vit)}
     model_name = cfg['model']['name'] + str(cfg['model'][matrix_type]['patch_size'][0])
-    model = model_dict[model_name](
-        num_classes=cfg['dataset']['num_classes'],
-        drop_path_rate=cfg['model']['drop_path'],
-        global_pool=cfg['model']['global_pool'],
-        mask_2d=cfg['model']['mask_2d'],
-        use_custom_patch=cfg['model']['use_custom_patch'],
-        classification=cfg['model']['classification'],
-        ## remove video part for A-MAE
-        #load_video=args.load_video,
-        # n_frm=args.n_frm,
-        #split_pos=args.split_pos,
-        #av_fusion=args.av_fusion,
-    )
-    if audio_exp:
-        img_size=(1024,128) # 1024, 128
-        in_chans=1
-        emb_dim = 768
-        if "vit_small_patch" in model_name:
-            emb_dim = 384
-        if cfg['model']['use_custom_patch']:
-            model.patch_embed = PatchEmbed_new(img_size=img_size, patch_size=16, in_chans=1, embed_dim=emb_dim, stride=10)
-            model.pos_embed = nn.Parameter(torch.zeros(1, 1212 + 1, emb_dim), requires_grad=False)  # fixed sin-cos embedding
-        else:
-            model.patch_embed = PatchEmbed_new(img_size=img_size, patch_size=(16,16), in_chans=1, embed_dim=emb_dim, stride=16) # no overlap. stride=img_size=16
-            num_patches = model.patch_embed.num_patches
-            #num_patches = 512 # assume audioset, 1024//16=64, 128//16=8, 512=64x8
-            model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim), requires_grad=False)  # fixed sin-cos embedding
-    else:
-        # audio_exp = False for EPIC-KITCHENS
-        img_size = specgram_cfg['resizes']
-        patch_size = cfg['model'][matrix_type]['patch_size']
-        in_chans = cfg['model']['in_chans'] # 6 for EPIC-KITCHENS, 12 for WEAR
-        emb_dim = cfg['model']['embed_dim']
-        stride = patch_size[0]
-        num_patches = img_size[0]//patch_size[0] * img_size[1]//patch_size[1]
+    del cfg['model']['name']
+    del cfg['model'][matrix_type]
 
-        if cfg['model']['use_custom_patch']:
-            model.patch_embed = PatchEmbed_new(img_size=img_size,
-                                                  patch_size=16,
-                                                  in_chans=in_chans,
-                                                  embed_dim=emb_dim,
-                                                  stride=10)
-            model.pos_embed = nn.Parameter(torch.zeros(1, 1212 + 1, emb_dim), requires_grad=False)
-        else:
-            model.patch_embed = PatchEmbed_new(img_size=img_size,
-                                                  patch_size=patch_size,
-                                                  in_chans=in_chans,
-                                                  embed_dim=emb_dim,
-                                                  stride=stride)
-            num_patches = model.patch_embed.num_patches
-            model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim), requires_grad=False)
+    model = model_dict[model_name]( **cfg['dataset'], **cfg['model'] )
+
+    img_size = specgram_cfg['resizes']
+    patch_size = cfg['model'][matrix_type]['patch_size']
+    in_chans = cfg['model']['in_chans']
+    emb_dim = cfg['model']['embed_dim']
+    stride = patch_size[0]
+    num_patches = img_size[0]//patch_size[0] * img_size[1]//patch_size[1]
+
+    model.patch_embed = PatchEmbed_new(img_size=img_size,
+                                            patch_size=patch_size,
+                                            in_chans=in_chans,
+                                            embed_dim=emb_dim,
+                                            stride=stride)
+    num_patches = model.patch_embed.num_patches
+    model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim), requires_grad=False)
 
     if finetune:
+        # FIXME: adapt to be compatible with accelerate (HuggingFace).
         checkpoint = torch.load(finetune, map_location='cpu')
         print("Load pre-trained checkpoint from: %s" % finetune)
         checkpoint_model = checkpoint['model']
@@ -460,14 +406,7 @@ def main(args):
         drop_last=True
     )
 
-    mixup_fn = None
-    mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
-    if mixup_active:
-        print("Mixup is activated!")
-        mixup_fn = Mixup(
-            mixup_alpha=args.mixup, cutmix_alpha=args.cutmix, cutmix_minmax=args.cutmix_minmax,
-            prob=args.mixup_prob, switch_prob=args.mixup_switch_prob, mode=args.mixup_mode,
-            label_smoothing=args.smoothing, num_classes=args.nb_classes)
+    mixup_fn = get_mixup(args)
 
     model = modeling(args, config, device)
     model.to(device)

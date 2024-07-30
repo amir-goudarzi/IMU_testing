@@ -11,7 +11,9 @@ from torch.utils.data import Dataset
 from features.transforms import normalize_tensor, cut_and_pad, cut_and_pad_lr
 from utils.utils import load_data, center_timestamp
 from features.imu_preprocessing import SpectrogramsGenerator
+from data.dataset import register_dataset
 
+@register_dataset("wear")
 class WearDataset(Dataset):
     def __init__(self,
             src_dir: os.PathLike,

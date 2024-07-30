@@ -66,7 +66,8 @@ def main(args):
             accelerator=accelerator
         )
 
-        if args.output_dir and (epoch % args.save_every_epoch == 0 or epoch + 1 == args.epochs):
+        if args.output_dir and (epoch % args.save_every_epoch == 0 or epoch + 1 == args.epochs) and accelerator.is_main_process:
+            accelerator.wait_for_everyone()
             accelerator.save_state(output_dir=os.path.join(args.output_dir, "accelerator_state"))
             # misc.save_model(
             #     args=args, model=model, model_without_ddp=model.module, optimizer=optimizer,
@@ -92,13 +93,20 @@ def load_train_objs(cfg, args):
         **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
     )
     else:
+        cfg_args = {
+            **cfg['dataset'],
+            **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type],
+            "preload": True,
+            "task_name": cfg['task_name']
+        }
         train_set = make_dataset(
             name=args.dataset,
-            is_pretrain=True,
-            task_name = cfg['task_name'],
-            preload=True,
-            **cfg['dataset'],
-            **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
+            is_pretrain=False,
+            **cfg_args
+            # task_name = cfg['task_name'],
+            # preload=True,
+            # **cfg['dataset'],
+            # **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
         )
 
     dataloader = DataLoader(
@@ -133,6 +141,4 @@ if __name__ == "__main__":
     parent_args.add_argument("--gpus_per_node", type=int, required=True)
 
     args = parent_args.parse_args()
-    # print(args)
-    # sys.exit(0)
     main(args)

@@ -9,8 +9,8 @@ def register_dataset(name):
 def make_dataset(
     name,
     is_pretrain,
-    split=None, 
-    is_training=False, 
+    # split=None, 
+    # is_training=False, 
     **kwargs):
     """
         A simple dataset builder
@@ -18,5 +18,5 @@ def make_dataset(
     if is_pretrain:
       dataset = datasets[name](**kwargs)
     else:
-        dataset = datasets[name](is_training, split, **kwargs)
+        dataset = datasets[name](**kwargs)
     return dataset

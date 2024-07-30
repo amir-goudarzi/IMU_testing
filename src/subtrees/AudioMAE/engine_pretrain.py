@@ -104,7 +104,9 @@ def train_fn(task_name):
         return imu
     else:
         raise NotImplementedError(f"Task {task_name} not implemented")
-
+    
+    
+# TODO: write imu_omnivore function for finetuning.
 def imu_omnivore(model, device, samples, args):
     imu, omnivore = samples
     imu = imu.to(device, non_blocking=True)

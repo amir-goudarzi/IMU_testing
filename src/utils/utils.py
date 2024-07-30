@@ -60,7 +60,7 @@ def save_data(
     else:
         data.to_pickle(os.path.join(dst_dir, video_id + '-gyro.pkl'), index=False)
 
-
+# TODO: Implement the interpolation function
 def interpolate_data(
         df: pd.DataFrame,
         is_accl=True) -> pd.DataFrame:
@@ -85,8 +85,8 @@ def interpolate_data(
     target_time_s = np.linspace(start_time, end_time,
                         num=int(round(1+sample_rate*(end_time - start_time))),
                         endpoint=True)
-
-    # TODO: Interpolate the data. Choose which is the correct way to interpolate.
+    
+    # Continue...
     b, a = interp1d()
 
 

@@ -168,26 +168,7 @@ def modeling(
 
     # define the model
     if audio_exp:
-        model = model_dict[model_name](
-            # audio_exp=True,	
-            img_size=specgram_cfg['resizes'],	
-            **cfg['model']
-            # norm_pix_loss=cfg['model']['norm_pix_loss'], 	
-            # in_chans=cfg['model']['in_chans'],
-            # alpha=cfg['model']['alpha'],
-            # mode=cfg['model']['mode'],
-            # use_custom_patch=cfg['model']['use_custom_patch'],	
-            # split_pos=cfg['model']['split_pos'],
-            # pos_trainable=cfg['model']['pos_trainable'],
-            # use_nce=cfg['model']['use_nce'],
-            # decoder_mode=cfg['model']['decoder_mode'], 
-            # mask_2d=cfg['model']['mask_2d'],
-            # mask_t_prob=cfg['model']['mask_t_prob'],
-            # mask_f_prob=cfg['model']['mask_f_prob'], 
-            # no_shift=cfg['model']['no_shift'],
-            # remove for A-MAE
-            #v_weight=args.v_weight, n_frm=args.n_frm, video_only=args.video_only, cl=args.cl, depth_av=args.depth_av,
-        )
+        model = model_dict[model_name]( img_size=specgram_cfg['resizes'], **cfg['model'] )
     else:
         model = model_dict[model_name](norm_pix_loss=cfg['model']['norm_pix_loss'])
 
