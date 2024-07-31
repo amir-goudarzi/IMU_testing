@@ -1,4 +1,4 @@
-from audiomae_ft import get_args_parser, modeling, get_mixup
+from audiomae_ft import get_args_parser, modeling, get_mixup, load_model
 
 import torch
 from torch.nn import BCEWithLogitsLoss
@@ -33,6 +33,7 @@ def main(args):
     # Don't use it if you want to log with wandb.
 
     train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args)
+    load_model(args.finetune, args.eval, model)
     mixup_fn = get_mixup(args)
     kwargs = GradScalerKwargs()
     accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs])
@@ -44,7 +45,11 @@ def main(args):
     else:
         log_writer = None
 
-    model, optimizer = accelerator.load_state(output_dir=os.path.join(args.output_dir, "accelerator_state"))
+    # if accelerator.is_main_process:
+    #     model = load_model(accelerator, args.finetune, args.eval, model)
+
+    # model, optimizer = accelerator.load_state(output_dir=os.path.join(args.output_dir, "accelerator_state"))
+    # accelerator.wait_for_everyone()
 
     loss_scaler = AcceleratorScaler(accelerator=accelerator)
     train_loader, valid_loader, model, optimizer = accelerator.prepare(train_loader, valid_loader, model, optimizer)
@@ -135,7 +140,6 @@ def load_train_objs(cfg, args):
             name=args.dataset,
             is_pretrain=False,
             task_name = cfg['task_name'],
-            preload=preload,
             **cfg['dataset_train'],
             **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
         )
@@ -143,7 +147,6 @@ def load_train_objs(cfg, args):
             name=args.dataset,
             is_pretrain=False,
             task_name = cfg['task_name'],
-            preload=preload,
             **cfg['dataset_valid'],
             **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
         )
@@ -165,8 +168,9 @@ def load_train_objs(cfg, args):
     model = modeling(
         seconds=args.seconds,
         matrix_type=args.matrix_type,
-        audio_exp=args.audio_exp,
-        cfg=cfg
+        cfg=cfg,
+        finetune=args.finetune,
+        eval=args.eval
     )
 
     world_size = args.nodes * args.gpus_per_node
@@ -179,8 +183,7 @@ def load_train_objs(cfg, args):
         no_weight_decay_list=model.no_weight_decay(),
         layer_decay=args.layer_decay
     )
-    optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
-    print(optimizer)
+    optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
     # loss_scaler = NativeScaler()
 
     criterion = BCEWithLogitsLoss()

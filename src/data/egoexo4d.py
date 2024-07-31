@@ -3,6 +3,7 @@ from torch.utils.data import Dataset
 import torchaudio.transforms as T
 
 import json
+import pandas as pd
 import os
 import numpy as np
 import pickle as pkl
@@ -34,7 +35,8 @@ class EgoExo4D(Dataset):
             transforms=None,
             cache_len=math.inf,
             device='cuda:1',
-            preload=False
+            preload=False,
+            tasks_file=None | os.PathLike
         ):
         assert os.path.isfile(annotations_file), "Invalid path to EgoExo4D annotations"
         assert os.path.exists(data_dir), "Invalid path to EgoExo4D data"
@@ -50,6 +52,7 @@ class EgoExo4D(Dataset):
         self.task_name = task_name
         self.sensors = sensors
         self.preload = preload
+        self.tasks_file = json.loads(open(tasks_file, 'rb')) if tasks_file is not None else tasks_file
 
         self.transforms = SpectrogramsGenerator(
             window_size=window_size,
@@ -76,6 +79,7 @@ class EgoExo4D(Dataset):
     def __len__(self):
         return len(self.takes)
 
+    # TODO: insert classes (as bitmaps)
     def __getitem__(self, idx):
         # Get the file
         take = self.takes[idx]
@@ -220,3 +224,15 @@ class EgoExo4D(Dataset):
     def __preload__(self):
         for take in self.takes:
             self.__load_imu__(take["take_name"], start_s=0, end_s=0, preload=True)
+
+    # TODO: check get_label_by_entry
+    def __get_label_by_entry__(self, take):
+        """
+        Ref.: https://docs.ego-exo4d-data.org/annotations/keystep/
+        """
+        benchmark_take = pd.DataFrame(self.tasks_file[take['take_uid']]['segments'])
+        label = benchmark_take.where(
+            benchmark_take['start_sec'] <= take['start_sec'] and benchmark_take['end_sec'] >= take['end_sec']).dropna().iloc[-1]['step_unique_id']
+        return label
+        
+        

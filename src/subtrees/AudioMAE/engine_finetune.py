@@ -19,8 +19,8 @@ from torch.utils.tensorboard import SummaryWriter
 from timm.data import Mixup
 from timm.utils import accuracy
 
-import util.misc as misc
-import util.lr_sched as lr_sched
+from .util import misc
+from .util import lr_sched
 import accelerate
 
 def train_one_epoch(

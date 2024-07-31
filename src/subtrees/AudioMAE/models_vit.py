@@ -113,8 +113,9 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             #T=32
             #F=8            
             ## for SPC & EPIC
-            T=8
-            F=8
+            # TODO: check the correctness of this solution
+            T=self.patch_embed.patch_size[1]
+            F=self.patch_embed.patch_size[0]
 
         
         # mask T
@@ -174,10 +175,6 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         return outcome
 
-
-
-    # overwrite original timm
-    # FIXME: classification was a parameter before. It has been moved into __init__.
     def forward(self, x, v=None, mask_t_prob=0.0, mask_f_prob=0.0):
         if mask_t_prob > 0.0 or mask_f_prob > 0.0:
             x = self.forward_features_mask(x, mask_t_prob=mask_t_prob, mask_f_prob=mask_f_prob)

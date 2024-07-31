@@ -19,6 +19,9 @@ from pathlib import Path
 import pickle as pkl
 import pandas as pd
 
+from accelerate import Accelerator
+from safetensors.torch import load_file
+
 import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
@@ -35,7 +38,7 @@ from timm.models.layers import to_2tuple
 import subtrees.AudioMAE.util.misc as misc
 from subtrees.AudioMAE.util.datasets import build_dataset
 from subtrees.AudioMAE.util.pos_embed import interpolate_pos_embed, interpolate_pos_embed_audio, interpolate_patch_embed_audio, interpolate_pos_embed_img2audio
-from subtrees.AudioMAE.util.patch_embed import PatchEmbed_new
+from subtrees.AudioMAE.util.patch_embed import PatchEmbed_new, PatchEmbed_org
 from subtrees.AudioMAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
 import subtrees.AudioMAE.util.lr_decay as lrd
 
@@ -175,7 +178,7 @@ def get_args_parser():
     parser.add_argument('--freqm', help='frequency mask max length', type=int, default=192)
     parser.add_argument('--timem', help='time mask max length', type=int, default=48)
     #parser.add_argument("--mixup", type=float, default=0, help="how many (0-1) samples need to be mixup during training")
-    parser.add_argument("--dataset", type=str, default="epic", help="dataset", choices=["epic", "wear"])
+    parser.add_argument("--dataset", type=str, default="epic", help="dataset", choices=["epic", "wear", "egoexo4d"])
     parser.add_argument("--use_fbank", type=bool, default=False)
     parser.add_argument("--use_soft", type=bool, default=False)
     parser.add_argument("--fbank_dir", type=str, default="/checkpoint/berniehuang/ast/egs/esc50/data/ESC-50-master/fbank", help="fbank dir") 
@@ -198,6 +201,11 @@ def get_args_parser():
     parser.add_argument('--n_frm', default=6, type=int, help='num of frames for video')
     parser.add_argument('--replace_with_mae', type=bool, default=False, help='replace_with_mae')
     parser.add_argument('--load_imgnet_pt', type=bool, default=False, help='when img_pt_ckpt, if load_imgnet_pt, use img_pt_ckpt to initialize audio branch, if not, keep audio branch random')
+    
+    parser.add_argument('--config', type=str, default='config.yaml')
+    parser.add_argument('--seconds', type=int, default=2)
+    parser.add_argument('--matrix_type', type=str, default='64x64')
+    
     return parser
 
 
@@ -216,18 +224,12 @@ def get_mixup(args):
 def modeling(
         seconds,
         matrix_type,
-        audio_exp,
         cfg,
         finetune,
         eval):
     specgram_cfg = cfg['spectrogram_params'][f'sec_{seconds}'][matrix_type]
     model_dict = {attr: getattr(models_vit, attr) for attr in dir(models_vit)}
     model_name = cfg['model']['name'] + str(cfg['model'][matrix_type]['patch_size'][0])
-    del cfg['model']['name']
-    del cfg['model'][matrix_type]
-
-    model = model_dict[model_name]( **cfg['dataset'], **cfg['model'] )
-
     img_size = specgram_cfg['resizes']
     patch_size = cfg['model'][matrix_type]['patch_size']
     in_chans = cfg['model']['in_chans']
@@ -235,19 +237,31 @@ def modeling(
     stride = patch_size[0]
     num_patches = img_size[0]//patch_size[0] * img_size[1]//patch_size[1]
 
-    model.patch_embed = PatchEmbed_new(img_size=img_size,
+    del cfg['model']['name']
+    del cfg['model'][matrix_type]
+    del cfg['model']['embed_dim']
+
+    # model = model_dict[model_name]( **cfg['dataset_train'], **cfg['model'] )
+    model = model_dict[model_name]( **cfg['model'] )
+
+
+    model.patch_embed = PatchEmbed_org(img_size=img_size,
                                             patch_size=patch_size,
                                             in_chans=in_chans,
                                             embed_dim=emb_dim,
-                                            stride=stride)
+                                            # stride=stride
+                                            )
     num_patches = model.patch_embed.num_patches
     model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim), requires_grad=False)
 
+    return model
+
+def load_model(finetune, eval, model):
     if finetune:
         # FIXME: adapt to be compatible with accelerate (HuggingFace).
-        checkpoint = torch.load(finetune, map_location='cpu')
+        # accelerator.load_state(finetune)
+        checkpoint_model = load_file(os.path.join(finetune, 'model.safetensors'))
         print("Load pre-trained checkpoint from: %s" % finetune)
-        checkpoint_model = checkpoint['model']
         state_dict = model.state_dict()
 
         if not eval:
