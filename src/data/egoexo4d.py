@@ -9,6 +9,7 @@ import numpy as np
 import pickle as pkl
 import math
 from time import time
+from copy import deepcopy
 
 from features.imu_preprocessing import SpectrogramsGenerator
 from features.transforms import normalize_tensor, cut_and_pad
@@ -36,7 +37,8 @@ class EgoExo4D(Dataset):
             cache_len=math.inf,
             device='cuda:1',
             preload=False,
-            tasks_file=None | os.PathLike
+            tasks_file=None | os.PathLike,
+            labels_file=None | os.PathLike
         ):
         assert os.path.isfile(annotations_file), "Invalid path to EgoExo4D annotations"
         assert os.path.exists(data_dir), "Invalid path to EgoExo4D data"
@@ -52,7 +54,8 @@ class EgoExo4D(Dataset):
         self.task_name = task_name
         self.sensors = sensors
         self.preload = preload
-        self.tasks_file = json.loads(open(tasks_file, 'rb')) if tasks_file is not None else tasks_file
+        self.tasks_file = json.load(open(tasks_file, 'r')) if tasks_file is not None else tasks_file
+        self.labels_file = pd.read_pickle(labels_file) if labels_file is not None else labels_file
 
         self.transforms = SpectrogramsGenerator(
             window_size=window_size,
@@ -73,8 +76,11 @@ class EgoExo4D(Dataset):
         self.cache = {}
         self.cache_len = cache_len
 
+        # Define the getitem function based on the task. 
+        self.getitem = self.__define_get_function__()
+
         if self.preload:
-            self.__preload__()
+            self.__preload__(self.labels_file is not None)
 
     def __len__(self):
         return len(self.takes)
@@ -84,22 +90,23 @@ class EgoExo4D(Dataset):
         # Get the file
         take = self.takes[idx]
         
-        start_s = time()
-        # Get the IMU streams
-        imu = self.__get_imu__(take)
-        imu_time = time()
-        spectrogram = self.transforms(imu)
-        spectrogram_time = time()
-    
-        if self.task_name == "imu":
-            # Get the spectrogram
-            return spectrogram
-        else:
-            # Get omnivore stream
+        return self.getitem(take), take['label']
+
+
+    def __define_get_function__(self):
+        def get_imu(take):
+            imu = self.__get_imu__(take)
+            return self.transforms(imu)
+        def get_combined(take):
+            imu = self.__get_imu__(take)
+            spectrogram = self.transforms(imu)
             omnivore = self.__get_omnivore__(take)
-
             return spectrogram, omnivore
-
+        
+        if self.task_name == "imu":
+            return get_imu
+        else:
+            return get_combined
 
     def __get_imu__(self, take, positions=['imu_left', 'imu-right']) -> torch.Tensor:
         '''
@@ -221,8 +228,19 @@ class EgoExo4D(Dataset):
         return omnivore[omni_idx, :, :]
 
 
-    def __preload__(self):
-        for take in self.takes:
+    def __preload__(self, is_classification=False):
+        self.tmp_takes = []
+
+        for idx, take in enumerate(self.takes):
+            if is_classification:
+                res = self.__get_label_by_entry__(take)
+                if res is None:
+                    self.takes.pop(idx)
+                    continue
+                else:
+                    self.takes[idx]['label'] = res
+            else:
+                self.takes[idx]['label'] = None
             self.__load_imu__(take["take_name"], start_s=0, end_s=0, preload=True)
 
     # TODO: check get_label_by_entry
@@ -230,9 +248,20 @@ class EgoExo4D(Dataset):
         """
         Ref.: https://docs.ego-exo4d-data.org/annotations/keystep/
         """
-        benchmark_take = pd.DataFrame(self.tasks_file[take['take_uid']]['segments'])
-        label = benchmark_take.where(
-            benchmark_take['start_sec'] <= take['start_sec'] and benchmark_take['end_sec'] >= take['end_sec']).dropna().iloc[-1]['step_unique_id']
-        return label
+        try:
+            if take['take_uid'] not in self.tasks_file['annotations']:
+                return None
+            benchmark_take = pd.DataFrame(self.tasks_file['annotations'][take['take_uid']]['segments'])
+            # start_s = take['start_sec'] + take['effective_start_sec']
+            # end_s = take['end_sec'] + take['effective_start_sec']
+            # TODO: check the following line.
+            label = benchmark_take.where(
+                (benchmark_take['start_time'] <= take['start_sec']) & (benchmark_take['end_time'] >= take['end_sec'])).dropna().iloc[-1]['step_unique_id']
+            label = self.labels_file.loc['step_unique_id' == label]['verb_idx']
+            print(f"Label: {label}")
+            self.tmp_takes.append(take)
+            return label
+        except Exception as e:
+            return None
         
         

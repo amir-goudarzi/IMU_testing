@@ -133,8 +133,8 @@ def load_train_objs(cfg, args):
         preload = False
 
         # FIXME: Uncomment for debugging
-        cfg['dataset_train']['preload'] = preload
-        cfg['dataset_valid']['preload'] = preload
+        # cfg['dataset_train']['preload'] = preload
+        # cfg['dataset_valid']['preload'] = preload
 
         train_set = make_dataset(
             name=args.dataset,
