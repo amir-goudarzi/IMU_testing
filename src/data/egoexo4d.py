@@ -14,6 +14,8 @@ from copy import deepcopy
 from features.imu_preprocessing import SpectrogramsGenerator
 from features.transforms import normalize_tensor, cut_and_pad
 from data.dataset import register_dataset
+from utils.utils import create_binary_array
+
 
 @register_dataset("egoexo4d")
 class EgoExo4D(Dataset):
@@ -85,12 +87,15 @@ class EgoExo4D(Dataset):
     def __len__(self):
         return len(self.takes)
 
-    # TODO: insert classes (as bitmaps)
+
     def __getitem__(self, idx):
         # Get the file
         take = self.takes[idx]
         
+        #FIXME: Uncomment for classifying
         return self.getitem(take), take['label']
+        # return self.getitem(take), 0
+        # return self.getitem(take), create_binary_array(109, 0)
 
 
     def __define_get_function__(self):
@@ -229,21 +234,20 @@ class EgoExo4D(Dataset):
 
 
     def __preload__(self, is_classification=False):
-        self.tmp_takes = []
-
+        # tmp_takes = []
         for idx, take in enumerate(self.takes):
-            if is_classification:
-                res = self.__get_label_by_entry__(take)
-                if res is None:
-                    self.takes.pop(idx)
-                    continue
-                else:
-                    self.takes[idx]['label'] = res
-            else:
-                self.takes[idx]['label'] = None
+            # if is_classification:
+            #     res = self.__get_label_by_entry__(take)
+            #     if res is None:
+            #         continue
+            #     else:
+            #         tmp_takes.append({**take, 'label': res })
+            # else:
+            #     tmp_takes.append({**take, 'label': None })
             self.__load_imu__(take["take_name"], start_s=0, end_s=0, preload=True)
+        # self.takes = tmp_takes
 
-    # TODO: check get_label_by_entry
+
     def __get_label_by_entry__(self, take):
         """
         Ref.: https://docs.ego-exo4d-data.org/annotations/keystep/
@@ -254,12 +258,10 @@ class EgoExo4D(Dataset):
             benchmark_take = pd.DataFrame(self.tasks_file['annotations'][take['take_uid']]['segments'])
             # start_s = take['start_sec'] + take['effective_start_sec']
             # end_s = take['end_sec'] + take['effective_start_sec']
-            # TODO: check the following line.
             label = benchmark_take.where(
                 (benchmark_take['start_time'] <= take['start_sec']) & (benchmark_take['end_time'] >= take['end_sec'])).dropna().iloc[-1]['step_unique_id']
-            label = self.labels_file.loc['step_unique_id' == label]['verb_idx']
-            print(f"Label: {label}")
-            self.tmp_takes.append(take)
+            label = self.labels_file[self.labels_file['step_unique_id'] == str(int(label))]['verb_idx'].iloc[0]
+            # print(f"Label: {label}")
             return label
         except Exception as e:
             return None

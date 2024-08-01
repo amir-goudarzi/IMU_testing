@@ -34,6 +34,7 @@ def main(args):
 
     train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args)
     load_model(args.finetune, args.eval, model)
+    args.nb_classes = cfg['model']['num_classes']
     mixup_fn = get_mixup(args)
     kwargs = GradScalerKwargs()
     accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs])
@@ -179,10 +180,19 @@ def load_train_objs(cfg, args):
     if args.lr is None:  # only base_lr is specified
         args.lr = args.blr * eff_batch_size / 256
 
+    no_weight_decay_list = model.no_weight_decay()
+    if cfg['linprob']:
+        no_weight_decay_list = lrd.linprob_parse(model, no_weight_decay_list)
+
     param_groups = lrd.param_groups_lrd(model, args.weight_decay,
         no_weight_decay_list=model.no_weight_decay(),
         layer_decay=args.layer_decay
     )
+
+    # FIXME: Uncomment for debugging
+    # for name, param in model.named_parameters():
+    #     print(name, param.requires_grad)
+
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
     # loss_scaler = NativeScaler()
 

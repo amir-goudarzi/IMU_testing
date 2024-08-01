@@ -186,6 +186,7 @@ def get_args_parser():
     #parser.add_argument("--distributed", type=bool, default=True)
     parser.add_argument('--first_eval_ep', default=0, type=int, help='do eval after first_eval_ep')
     parser.add_argument('--use_custom_patch', type=bool, default=False, help='use custom patch with overlapping and override timm PatchEmbed')
+    parser.add_argument('--save_every_epoch', default=20, type=int,help='save_every_epoch')
     parser.add_argument('--source_custom_patch', type=bool, default=False, help='the pre-trained model already use custom patch')
     parser.add_argument('--roll_mag_aug', type=bool, default=False, help='use roll_mag_aug')
     parser.add_argument('--mask_t_prob', default=0.0, type=float, help='T masking ratio (percentage of removed patches).') #  
@@ -245,11 +246,11 @@ def modeling(
     model = model_dict[model_name]( **cfg['model'] )
 
 
-    model.patch_embed = PatchEmbed_org(img_size=img_size,
+    model.patch_embed = PatchEmbed_new(img_size=img_size,
                                             patch_size=patch_size,
                                             in_chans=in_chans,
                                             embed_dim=emb_dim,
-                                            # stride=stride
+                                            stride=patch_size[0]
                                             )
     num_patches = model.patch_embed.num_patches
     model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim), requires_grad=False)
@@ -258,7 +259,6 @@ def modeling(
 
 def load_model(finetune, eval, model):
     if finetune:
-        # FIXME: adapt to be compatible with accelerate (HuggingFace).
         # accelerator.load_state(finetune)
         checkpoint_model = load_file(os.path.join(finetune, 'model.safetensors'))
         print("Load pre-trained checkpoint from: %s" % finetune)

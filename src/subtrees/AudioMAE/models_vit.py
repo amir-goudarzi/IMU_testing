@@ -113,9 +113,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             #T=32
             #F=8            
             ## for SPC & EPIC
-            # TODO: check the correctness of this solution
-            T=self.patch_embed.patch_size[1]
-            F=self.patch_embed.patch_size[0]
+            T = self.patch_embed.img_size[1] // self.patch_embed.patch_size[1]
+            F = self.patch_embed.img_size[0] // self.patch_embed.patch_size[0]
 
         
         # mask T
@@ -153,7 +152,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         x = self.patch_embed(x) # 4, 512, 768
 
         x = x + self.pos_embed[:, 1:, :]
-        if self.random_masking_2d:
+        # if self.random_masking_2d:
+        if self.mask_2d:
             x, mask, ids_restore = self.random_masking_2d(x, mask_t_prob, mask_f_prob)
         else:
             x, mask, ids_restore = self.random_masking(x, mask_t_prob)
@@ -175,6 +175,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         return outcome
 
+
     def forward(self, x, v=None, mask_t_prob=0.0, mask_f_prob=0.0):
         if mask_t_prob > 0.0 or mask_f_prob > 0.0:
             x = self.forward_features_mask(x, mask_t_prob=mask_t_prob, mask_f_prob=mask_f_prob)
@@ -183,6 +184,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         if self.classification:
             x = self.head(x)
         return x
+    
 
 def vit_small_patch8(**kwargs):
     model = VisionTransformer(

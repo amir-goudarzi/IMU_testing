@@ -41,7 +41,7 @@ class PatchEmbed_new(nn.Module):
         
         self.img_size = img_size
         self.patch_size = patch_size
-        
+        self.in_chans = in_chans
 
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=stride) # with overlapped patches
         #self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
@@ -54,7 +54,7 @@ class PatchEmbed_new(nn.Module):
 
     def get_output_shape(self, img_size):
         # todo: don't be lazy..
-        return self.proj(torch.randn(1,1,img_size[0],img_size[1])).shape 
+        return self.proj(torch.randn(1, self.in_chans, img_size[0],img_size[1])).shape 
 
     def forward(self, x):
         B, C, H, W = x.shape

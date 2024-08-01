@@ -9,7 +9,7 @@ import torchaudio.transforms as T
 from torch.utils.data import Dataset
 
 from features.transforms import normalize_tensor, cut_and_pad, cut_and_pad_lr
-from utils.utils import load_data, center_timestamp
+from utils.utils import load_data, center_timestamp, create_binary_array
 from features.imu_preprocessing import SpectrogramsGenerator
 from data.dataset import register_dataset
 
@@ -71,7 +71,7 @@ class WearDataset(Dataset):
         accl = self.__get_windowed_data__(start, stop, x)
         accl = self.transforms(accl)
 
-        target = self.create_binary_array(target)
+        target = create_binary_array(self.num_classes, target)
 
         return (accl, target)
 
@@ -83,17 +83,13 @@ class WearDataset(Dataset):
             self.cached_data = []
         self.use_cache = use_cache
 
-    def create_binary_array(self, target_class):
-        binary_array = torch.zeros(self.num_classes)  # Initialize array with zeros
-        binary_array[int(target_class)] = 1  # Set the target class to 1
-        assert binary_array.sum() == 1, f'Target class is not unique: {binary_array}'
-        return binary_array
 
     def __load_annotations__(self, annotations: os.PathLike):
         assert os.path.isfile(annotations), f'The file {annotations} does not exist'
         data = pd.read_pickle(annotations)
         data['duration'] = data['stop_s'] - data['start_s']
         return data
+
 
     def __load_data__(self, subject: str) -> dict:
         data = pd.read_csv(os.path.join(self.src_dir, 'raw', 'inertial', f'{subject}.csv'))

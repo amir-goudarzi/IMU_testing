@@ -4,6 +4,8 @@ import numpy as np
 import os
 import logging
 
+import torch
+
 
 def load_data(src_dir: os.PathLike, video_id: str, is_csv=True):
     '''
@@ -122,3 +124,10 @@ def center_timestamp(start: str, stop: str, mode='datetime'):
         stop_ms = stop * 1000
     center = (start_ms + stop_ms) // 2
     return center
+
+
+def create_binary_array(num_classes, target_class):
+    binary_array = torch.zeros(num_classes)  # Initialize array with zeros
+    binary_array[int(target_class)] = 1  # Set the target class to 1
+    assert binary_array.sum() == 1, f'Target class is not unique: {binary_array}'
+    return binary_array

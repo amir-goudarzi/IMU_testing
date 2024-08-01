@@ -74,3 +74,14 @@ def get_layer_id_for_vit(name, num_layers):
         return int(name.split('.')[1]) + 1
     else:
         return num_layers
+    
+
+def linprob_parse(model, no_weight_decay_list):
+    """
+    Parse the model to get the linear probe layer
+    """
+    for name, param in model.named_parameters():
+        if 'head' not in name:
+            no_weight_decay_list.add(name)
+            param.requires_grad = False
+    return no_weight_decay_list

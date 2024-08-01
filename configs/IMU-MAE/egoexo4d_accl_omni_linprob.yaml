@@ -1,22 +1,22 @@
 task_name: "imu"
-linprob: False
+linprob: True
 dataset_train: {
   data_dir: '/data2/EgoExo4D',
-  annotations_file: './data/EgoExo4D/annotations_pretrain.pkl',
+  annotations_file: './data/EgoExo4D/keysteps/train_takes.pkl',
   stream_labels: ["imu-left", "imu-right"],
   sensors: ["accl"],
   preload: True,
   tasks_file: '/data2/EgoExo4D/annotations/keystep_train.json',
-  labels_file: './data/EgoExo4D/verbs_mapping_keystep.pkl',
+  labels_file: '../data/EgoExo4D/verbs_mapping_keystep.pkl',
 }
 dataset_valid: {
   data_dir: '/data2/EgoExo4D',
-  annotations_file: './data/EgoExo4D/annotations_pretrain.pkl',
+  annotations_file: './data/EgoExo4D/keysteps/valid_takes.pkl',
   stream_labels: ["imu-left", "imu-right"],
   sensors: ["accl"],
   preload: True,
   tasks_file: '/data2/EgoExo4D/annotations/keystep_val.json',
-  labels_file: './data/EgoExo4D/verbs_mapping_keystep.pkl',
+  labels_file: '../data/EgoExo4D/verbs_mapping_keystep.pkl',
 }
 dataset_test: {
   data_dir: '/data2/EgoExo4D',
@@ -49,7 +49,7 @@ model: {
   embed_dim: 384, # ViT-S: 384, ViT-B: 768, ViT-L: 1024, ViT-H: 1280
   # depth: 12,
   # mask_ratio: 0.9,
-  mask_2d: True,
+  mask_2d: False,
   # mask_t_prob: 0.2,
   # mask_f_prob: 0.2,
   # drop_path: 0.1,
