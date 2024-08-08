@@ -2,7 +2,7 @@ task_name: "imu"
 linprob: False
 dataset_train: {
   data_dir: '/data2/EgoExo4D',
-  annotations_file: './data/EgoExo4D/annotations_pretrain.pkl',
+  annotations_file: './data/EgoExo4D/keysteps/train_takes.pkl',
   stream_labels: ["imu-left", "imu-right"],
   sensors: ["accl"],
   preload: True,
@@ -11,19 +11,12 @@ dataset_train: {
 }
 dataset_valid: {
   data_dir: '/data2/EgoExo4D',
-  annotations_file: './data/EgoExo4D/annotations_pretrain.pkl',
+  annotations_file: './data/EgoExo4D/keysteps/valid_takes.pkl',
   stream_labels: ["imu-left", "imu-right"],
   sensors: ["accl"],
   preload: True,
   tasks_file: '/data2/EgoExo4D/annotations/keystep_val.json',
   labels_file: './data/EgoExo4D/verbs_mapping_keystep.pkl',
-}
-dataset_test: {
-  data_dir: '/data2/EgoExo4D',
-  annotations_file: './data/EgoExo4D/annotations_test.pkl',
-  stream_labels: ["imu-left", "imu-right"],
-  sensors: ["accl"],
-  preload: True
 }
 mean_std: {
   save_path: None,

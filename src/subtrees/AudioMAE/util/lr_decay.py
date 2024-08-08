@@ -84,4 +84,6 @@ def linprob_parse(model, no_weight_decay_list):
         if 'head' not in name:
             no_weight_decay_list.add(name)
             param.requires_grad = False
+        else:
+            param.requires_grad = True
     return no_weight_decay_list

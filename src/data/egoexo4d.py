@@ -39,8 +39,8 @@ class EgoExo4D(Dataset):
             cache_len=math.inf,
             device='cuda:1',
             preload=False,
-            tasks_file=None | os.PathLike,
-            labels_file=None | os.PathLike
+            tasks_file=None,
+            labels_file=None
         ):
         assert os.path.isfile(annotations_file), "Invalid path to EgoExo4D annotations"
         assert os.path.exists(data_dir), "Invalid path to EgoExo4D data"
@@ -56,7 +56,7 @@ class EgoExo4D(Dataset):
         self.task_name = task_name
         self.sensors = sensors
         self.preload = preload
-        self.tasks_file = json.load(open(tasks_file, 'r')) if tasks_file is not None else tasks_file
+        self.tasks_file = None if tasks_file is None else json.load(open(tasks_file, 'r'))
         self.labels_file = pd.read_pickle(labels_file) if labels_file is not None else labels_file
 
         self.transforms = SpectrogramsGenerator(
@@ -234,6 +234,8 @@ class EgoExo4D(Dataset):
 
 
     def __preload__(self, is_classification=False):
+        # Uncomment all those lines if you want to extract the labels and tasks from the annotations file.
+        # It's not necessary to do this if you already have the keystep annotations combined with the takes.
         # tmp_takes = []
         for idx, take in enumerate(self.takes):
             # if is_classification:

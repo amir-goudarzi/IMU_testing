@@ -7,7 +7,7 @@ dataset_train: {
   sensors: ["accl"],
   preload: True,
   tasks_file: '/data2/EgoExo4D/annotations/keystep_train.json',
-  labels_file: '../data/EgoExo4D/verbs_mapping_keystep.pkl',
+  labels_file: './data/EgoExo4D/verbs_mapping_keystep.pkl',
 }
 dataset_valid: {
   data_dir: '/data2/EgoExo4D',
@@ -16,14 +16,7 @@ dataset_valid: {
   sensors: ["accl"],
   preload: True,
   tasks_file: '/data2/EgoExo4D/annotations/keystep_val.json',
-  labels_file: '../data/EgoExo4D/verbs_mapping_keystep.pkl',
-}
-dataset_test: {
-  data_dir: '/data2/EgoExo4D',
-  annotations_file: './data/EgoExo4D/annotations_test.pkl',
-  stream_labels: ["imu-left", "imu-right"],
-  sensors: ["accl"],
-  preload: True
+  labels_file: './data/EgoExo4D/verbs_mapping_keystep.pkl',
 }
 mean_std: {
   save_path: None,

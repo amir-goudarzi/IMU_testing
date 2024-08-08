@@ -9,6 +9,7 @@ nodes=1
 gpus_per_node=2
 
 for mask_ratio in 0.6 0.7 0.8 0.9
+# for mask_ratio in 0.8
 do
     accelerate launch src/dist_ft_accelerate.py \
         --log_dir $experiments_dir/mask_ratio{$mask_ratio}_$model \

@@ -1,9 +1,6 @@
-from audiomae_ft import get_args_parser, modeling, get_mixup, load_model
-
 import torch
 from torch.nn import BCEWithLogitsLoss
 from torch.utils.data import DataLoader
-from torch.nn.parallel import DistributedDataParallel as DDP
 import os
 import sys
 import json
@@ -12,6 +9,7 @@ import datetime
 
 from accelerate import Accelerator, GradScalerKwargs
 
+from audiomae_ft import get_args_parser, modeling, get_mixup, load_model
 from utils.os_utils import load_config
 
 sys.path.append('.')
@@ -27,19 +25,20 @@ from data.dataset import make_dataset
 
 
 def main(args):
-    cfg = load_config(args.config)
 
-    # Check to choose if you want to use the SummaryWriter (Tensorboard) or not.
-    # Don't use it if you want to log with wandb.
+    kwargs = GradScalerKwargs()
+    accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs])
+    device = accelerator.device
+
+    cfg = load_config(args.config)
 
     train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args)
     load_model(args.finetune, args.eval, model)
     args.nb_classes = cfg['model']['num_classes']
     mixup_fn = get_mixup(args)
-    kwargs = GradScalerKwargs()
-    accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs])
-    device = accelerator.device
 
+    # Check to choose if you want to use the SummaryWriter (Tensorboard) or not.
+    # Don't use it if you want to log with wandb.
     if accelerator.is_main_process and args.log_dir is not None:
         os.makedirs(args.log_dir, exist_ok=True)
         log_writer = SummaryWriter(log_dir=args.log_dir)
@@ -53,7 +52,7 @@ def main(args):
     # accelerator.wait_for_everyone()
 
     loss_scaler = AcceleratorScaler(accelerator=accelerator)
-    train_loader, valid_loader, model, optimizer = accelerator.prepare(train_loader, valid_loader, model, optimizer)
+    model, optimizer, train_loader, valid_loader = accelerator.prepare(model, optimizer, train_loader, valid_loader)
 
     if accelerator.is_main_process:
         print(f"Start training for {args.epochs} epochs")
@@ -131,9 +130,9 @@ def load_train_objs(cfg, args):
             **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
         )
     else:
-        preload = False
 
         # FIXME: Uncomment for debugging
+        # preload = False
         # cfg['dataset_train']['preload'] = preload
         # cfg['dataset_valid']['preload'] = preload
 
@@ -144,6 +143,7 @@ def load_train_objs(cfg, args):
             **cfg['dataset_train'],
             **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
         )
+        print(cfg['dataset_train'])
         val_set = make_dataset(
             name=args.dataset,
             is_pretrain=False,
