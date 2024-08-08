@@ -27,10 +27,23 @@ from data.dataset import make_dataset
 def main(args):
 
     kwargs = GradScalerKwargs()
-    accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs])
-    device = accelerator.device
-
+    accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs], log_with="wandb")
     cfg = load_config(args.config)
+    config = {
+        **cfg,
+        **vars(args)
+    }
+    linprob = 'linprob' if cfg['linprob'] else 'finetuning'
+    masking2d = 'masking2d' if cfg['model']['mask_2d'] else 'nomasking2d'
+    mask_ratio = None
+    if cfg['model']['mask_2d']:
+        mask_ratio_t = args.mask_t_prob
+        mask_ratio_f = args.mask_f_prob
+        mask_ratio = f"t{mask_ratio_t}_f{mask_ratio_f}"
+    else:
+        mask_ratio = args.mask_t_prob
+    accelerator.init_trackers(f"imu_{linprob}", config=config, init_kwargs={"wandb":{"name":f"{masking2d}_{mask_ratio}"}})
+
 
     train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args)
     load_model(args.finetune, args.eval, model)
@@ -57,8 +70,7 @@ def main(args):
     if accelerator.is_main_process:
         print(f"Start training for {args.epochs} epochs")
         start_time = time.time()
-        max_mAP = 0.0
-        max_mAcc = 0.0
+        max_accuracy = 0.0
 
     for epoch in range(args.epochs):
         train_stats = train_one_epoch(
@@ -76,29 +88,32 @@ def main(args):
             args=args,
             task_name=cfg['task_name']
         )
+        test_stats = evaluate(
+                    data_loader=valid_loader,
+                    model=model,
+                    accelerator=accelerator,
+                    args=args,
+                    epoch=epoch,
+                    task_name=cfg['task_name']
+                )
+        accelerator.wait_for_everyone()
         if accelerator.is_main_process:
             if args.output_dir and (epoch % args.save_every_epoch == 0 or epoch + 1 == args.epochs):
-                accelerator.wait_for_everyone()
                 accelerator.save_state(output_dir=os.path.join(args.output_dir, "accelerator_state"))
-                # misc.save_model(
-                #     args=args, model=model, model_without_ddp=model.module, optimizer=optimizer,
-                #     loss_scaler=loss_scaler, epoch=epoch)
+
             if epoch >= args.first_eval_ep:
-                test_stats = evaluate(valid_loader, model, device, args.dist_eval, out_dir=args.output_dir)
-                print(f"mAP of the network on the {len(valid_loader)} test images: {test_stats['mAP']:.4f}")
-                print(f"Accuracy of the network on the {len(valid_loader)} test images: {test_stats['mAcc']:.4f}")
-                max_mAP = max(max_mAP, test_stats["mAP"])
-                max_mAcc = max(max_mAcc, test_stats["mAcc"])
-                print(f'Max mAP: {max_mAP:.4f}')
-                print(f'Max mAcc: {max_mAcc:.4f}')
+                print(f"Accuracy of the network on the {len(valid_loader) * args.batch_size} test images: {test_stats['acc1']:.1f}%")
+                max_accuracy = max(max_accuracy, test_stats["acc1"])
+                print(f'Max accuracy: {max_accuracy:.2f}%')
             else:
-                test_stats ={'mAP': 0.0, 'mAcc': 0.0}
+                test_stats ={'acc1': 0.0, 'acc5': 0.0, 'loss': 0.0}
                 print(f'too new to evaluate!')
             
 
             if log_writer is not None:
-                log_writer.add_scalar('perf/mAP', test_stats['mAP'], epoch)
-                log_writer.add_scalar('perf/Acc', test_stats['mAcc'], epoch)
+                log_writer.add_scalar('perf/test_acc1', test_stats['acc1'], epoch)
+                log_writer.add_scalar('perf/test_acc5', test_stats['acc5'], epoch)
+                log_writer.add_scalar('perf/test_loss', test_stats['loss'], epoch)
 
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                             'epoch': epoch,}
@@ -108,10 +123,11 @@ def main(args):
                     log_writer.flush()
                 with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
                     f.write(json.dumps(log_stats) + "\n")
+            total_time = time.time() - start_time
+            total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+            print('Training time {}'.format(total_time_str))
+        accelerator.wait_for_everyone()
     accelerator.end_training()
-    total_time = time.time() - start_time
-    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    print('Training time {}'.format(total_time_str))
 
 
 def load_train_objs(cfg, args):

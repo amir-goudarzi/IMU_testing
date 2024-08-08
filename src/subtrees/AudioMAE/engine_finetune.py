@@ -103,6 +103,8 @@ def train_one_epoch(
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
+    if accelerator.is_main_process:
+        accelerator.log({'train_loss': metric_logger.loss.global_avg, 'lr': metric_logger.lr.global_avg}, step=epoch)
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
@@ -111,9 +113,9 @@ def train_one_epoch(
 def evaluate(
         data_loader: Iterable,
         model: torch.nn.Module,
-        device,
         accelerator: None | accelerate.Accelerator,
         args,
+        epoch: int,
         task_name='imu',
     ):
     criterion = torch.nn.CrossEntropyLoss()
@@ -133,7 +135,7 @@ def evaluate(
 
         # compute output
         output, loss = train_forward(model, images, target, criterion, accelerator, args)
-
+        output, target = accelerator.gather_for_metrics((output, target))
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
 
         batch_size = images.shape[0]
@@ -144,7 +146,9 @@ def evaluate(
     metric_logger.synchronize_between_processes()
     print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
           .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
-
+    
+    if accelerator.is_main_process:
+        accelerator.log({'valid_loss': metric_logger.loss.global_avg, 'acc1': metric_logger.acc1.global_avg, 'acc5': metric_logger.acc5.global_avg}, step=epoch)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 def train_fn(task_name):
