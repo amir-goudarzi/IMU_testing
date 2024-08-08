@@ -166,3 +166,5 @@ data/WEAR/sec_2/mean_std/accl_mean_64x64.pt
 data/WEAR/sec_2/mean_std/accl_std_16x64.pt
 data/WEAR/sec_2/mean_std/accl_std_32x64.pt
 data/WEAR/sec_2/mean_std/accl_std_64x64.pt
+
+wandb
