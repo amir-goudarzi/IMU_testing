@@ -42,7 +42,7 @@ def main(args):
         mask_ratio = f"t{mask_ratio_t}_f{mask_ratio_f}"
     else:
         mask_ratio = args.mask_t_prob
-    accelerator.init_trackers(f"imu_{linprob}", config=config, init_kwargs={"wandb":{"name":f"{masking2d}_{mask_ratio}"}})
+    accelerator.init_trackers(f"prova_{linprob}", config=config, init_kwargs={"wandb":{"name":f"{masking2d}_{mask_ratio}"}})
 
 
     train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args)

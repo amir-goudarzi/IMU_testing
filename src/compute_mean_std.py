@@ -49,6 +49,9 @@ mean = [-24.1932, -21.6217, -23.2775, -25.6118, -23.3322, -24.7963, -23.0271,
         -20.5719, -23.9399, -23.1688, -20.6322, -24.1154]
 std = [15.9730, 14.1860, 13.3603, 19.5357, 18.3608, 17.5932, 17.9725, 17.0493,
         15.6102, 17.7609, 16.9667, 15.5691]
+
+Mean and std for default values of class EgoExo4D - training split:
+accl_mean=tensor([-1.3760, -1.4863,  2.0684], dtype=torch.float16), accl_std=tensor([2.2266, 2.2715, 3.0801], dtype=torch.float16)
 '''
 
 def main(args, matrix_type='64x64', seconds=2):
@@ -97,17 +100,16 @@ def main(args, matrix_type='64x64', seconds=2):
     cfg = load_config(args.config)
     # config['device'] = rank
     cfg['dataset']['preload'] = True
-    data = make_dataset(
+    dataset = make_dataset(
         name=args.dataset,
         is_pretrain=True,
         task_name = cfg['task_name'],
-        device=DEVICE,
         **cfg['dataset'],
         **cfg['spectrogram_params'][f'sec_{seconds}'][matrix_type]
     )
     # Create a data loader
     batch_size = 512
-    dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
     accl_stats = {
         'psum': torch.zeros(3).to(DEVICE),
@@ -120,18 +122,18 @@ def main(args, matrix_type='64x64', seconds=2):
         'psum_sq': torch.zeros(3).to(DEVICE),
         'count': torch.tensor(0).to(DEVICE),
     }
-    dataset_len = len(data)
+    dataset_len = len(dataset)
     accl_tot = None
 
-    for i, data in enumerate(dataloader):
-    # for i, (data, _) in enumerate(dataloader):
+    # for i, data in enumerate(dataloader):
+    for i, (data, _) in enumerate(dataloader):
         print(f'{i}/{dataset_len//batch_size}')
         accl = data.to(DEVICE)
         if accl_tot is None:
             accl_tot = accl.type(torch.float16)
-            break
         else:
             accl_tot = torch.cat((accl_tot, accl.type(torch.float16)), dim=0)
+
     # for i, (data, target) in enumerate(dataloader):
         # accl, gyro = data[:, :3], data[:, 3:]
         # accl = accl.to(DEVICE)
@@ -161,16 +163,19 @@ def main(args, matrix_type='64x64', seconds=2):
     # div = gyro_stats['count'] * 64 * 64
     # gyro_mean = gyro_stats['psum'] / div
     # gyro_std  = torch.sqrt(gyro_stats['psum_sq'] / div - gyro_mean ** 2)
-    accl_mean = accl_tot.mean(dim=(0, 2, 3))
-    accl_std = accl_tot.std(dim=(0, 2, 3))
+    
+    # accl_mean = accl_tot.mean(dim=(0, 2, 3))
+    # accl_std = accl_tot.std(dim=(0, 2, 3))
+    accl_mean = accl_tot.mean(dim=(0, 2))
+    accl_std = accl_tot.std(dim=(0, 2))
     print(f'{accl_mean=}, {accl_std=}')
 
     # save_path = config['mean_std']['save_path']
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path)
 
-    torch.save(accl_mean, os.path.join(args.save_path, f'accl_mean_{matrix_type}.pt'))
-    torch.save(accl_std, os.path.join(args.save_path, f'accl_std_{matrix_type}.pt'))
+    torch.save(accl_mean, os.path.join(args.save_path, f'accl_mean.pt'))
+    torch.save(accl_std, os.path.join(args.save_path, f'accl_std.pt'))
     # print(f'{gyro_mean=}, {gyro_std=}')
 
 

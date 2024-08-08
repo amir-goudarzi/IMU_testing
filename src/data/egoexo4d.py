@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import Dataset
 import torchaudio.transforms as T
-
+from torchvision.transforms import functional as F
 import json
 import pandas as pd
 import os
@@ -40,7 +40,9 @@ class EgoExo4D(Dataset):
             device='cuda:1',
             preload=False,
             tasks_file=None,
-            labels_file=None
+            labels_file=None,
+            mean=None,
+            std=None
         ):
         assert os.path.isfile(annotations_file), "Invalid path to EgoExo4D annotations"
         assert os.path.exists(data_dir), "Invalid path to EgoExo4D data"
@@ -75,6 +77,10 @@ class EgoExo4D(Dataset):
         self.resample_left =  T.Resample(800, self.sampling_rate)
         self.resample_right = T.Resample(1000, self.sampling_rate)
         
+        if mean is not None and std is not None:
+            self.mean = torch.load(mean)
+            self.std = torch.load(std)
+
         self.cache = {}
         self.cache_len = cache_len
 
@@ -94,7 +100,7 @@ class EgoExo4D(Dataset):
         
         #FIXME: Uncomment for classifying
         return self.getitem(take), take['label']
-        # return self.getitem(take), 0
+        # return self.getitem(take)
         # return self.getitem(take), create_binary_array(109, 0)
 
 
@@ -137,6 +143,9 @@ class EgoExo4D(Dataset):
         right = cut_and_pad(right, self.sampling_rate, self.window_size)
 
         # Compute the mean of the IMU data
+        imu = self.__compute_mean__(left, right)
+        if self.mean is not None and self.std is not None:
+            imu = F.normalize(imu, self.mean, self.std)
         return self.__compute_mean__(left, right)
     
 

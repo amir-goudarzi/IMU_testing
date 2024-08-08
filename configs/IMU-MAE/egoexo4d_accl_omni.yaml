@@ -5,7 +5,9 @@ dataset: {
   annotations_file: './data/EgoExo4D/annotations_train.pkl',
   stream_labels: ["imu-left", "imu-right"],
   sensors: ["accl"],
-  preload: True
+  preload: True,
+  mean: ./data/EgoExo4D/mean_std/accl_mean.pt,
+  std: ./data/EgoExo4D/mean_std/accl_std.pt,
 }
 mean_std: {
   save_path: None,
