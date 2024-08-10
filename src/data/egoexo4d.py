@@ -61,6 +61,10 @@ class EgoExo4D(Dataset):
         self.tasks_file = None if tasks_file is None else json.load(open(tasks_file, 'r'))
         self.labels_file = pd.read_pickle(labels_file) if labels_file is not None else labels_file
 
+        if mean is not None and std is not None:
+            self.mean = torch.load(mean)
+            self.std = torch.load(std)
+
         self.transforms = SpectrogramsGenerator(
             window_size=window_size,
             # overlap_in_s=overlap_in_s,
@@ -71,15 +75,14 @@ class EgoExo4D(Dataset):
             downsampling_rate=downsampling_rate,
             transforms=transforms,
             resizes=resizes,
-            temporal_points=temporal_points
+            temporal_points=temporal_points,
+            mean=self.mean,
+            std=self.std
         )
 
         self.resample_left =  T.Resample(800, self.sampling_rate)
         self.resample_right = T.Resample(1000, self.sampling_rate)
         
-        if mean is not None and std is not None:
-            self.mean = torch.load(mean)
-            self.std = torch.load(std)
 
         self.cache = {}
         self.cache_len = cache_len
@@ -99,8 +102,8 @@ class EgoExo4D(Dataset):
         take = self.takes[idx]
         
         #FIXME: Uncomment for classifying
-        return self.getitem(take), take['label']
-        # return self.getitem(take)
+        # return self.getitem(take), take['label']
+        return self.getitem(take)
         # return self.getitem(take), create_binary_array(109, 0)
 
 
@@ -143,10 +146,8 @@ class EgoExo4D(Dataset):
         right = cut_and_pad(right, self.sampling_rate, self.window_size)
 
         # Compute the mean of the IMU data
-        imu = self.__compute_mean__(left, right)
-        if self.mean is not None and self.std is not None:
-            imu = F.normalize(imu, self.mean, self.std)
         return self.__compute_mean__(left, right)
+
     
 
     def __load_imu__(self, take_name, start_s, end_s, preload=False) -> torch.Tensor:

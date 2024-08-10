@@ -40,7 +40,7 @@ def main(args):
     dataloader, model, optimizer = load_train_objs(cfg, args)
 
     kwargs = GradScalerKwargs()
-    accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs])
+    accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs], log_with="wandb")
     device = accelerator.device
 
     if accelerator.is_main_process and args.log_dir is not None:
@@ -48,7 +48,11 @@ def main(args):
         log_writer = SummaryWriter(log_dir=args.log_dir)
     else:
         log_writer = None
-
+    config = {
+        **cfg,
+        **vars(args)
+    }
+    accelerator.init_trackers(f"imu_pretrain", config=config, init_kwargs={"wandb":{"name":f"mask_ratio={args.mask_ratio}"}})
     loss_scaler = AcceleratorScaler(accelerator=accelerator)
     dataloader, model, optimizer = accelerator.prepare(dataloader, model, optimizer)
 
@@ -65,9 +69,8 @@ def main(args):
             task_name=cfg['task_name'],
             accelerator=accelerator
         )
-
+        accelerator.wait_for_everyone()
         if args.output_dir and (epoch % args.save_every_epoch == 0 or epoch + 1 == args.epochs) and accelerator.is_main_process:
-            accelerator.wait_for_everyone()
             accelerator.save_state(output_dir=os.path.join(args.output_dir, "accelerator_state"))
             # misc.save_model(
             #     args=args, model=model, model_without_ddp=model.module, optimizer=optimizer,
@@ -81,6 +84,7 @@ def main(args):
                 log_writer.flush()
             with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
                 f.write(json.dumps(log_stats) + "\n")
+        accelerator.wait_for_everyone()
     accelerator.end_training()
 
 def load_train_objs(cfg, args):
@@ -96,7 +100,6 @@ def load_train_objs(cfg, args):
         cfg_args = {
             **cfg['dataset'],
             **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type],
-            "preload": True,
             "task_name": cfg['task_name']
         }
         train_set = make_dataset(
@@ -114,6 +117,7 @@ def load_train_objs(cfg, args):
         batch_size=args.batch_size,
         shuffle=True,
         pin_memory=True,
+        num_workers=args.num_workers,
     )
 
     model = modeling(

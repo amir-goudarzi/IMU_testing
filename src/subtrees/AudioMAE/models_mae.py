@@ -53,7 +53,8 @@ class MaskedAutoencoderViT(nn.Module):
 
         #self.split_pos = split_pos # not useful
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim), requires_grad=pos_trainable)  # fixed sin-cos embedding
-
+        self.in_chans = in_chans
+        
         self.encoder_depth = depth
         self.contextual_depth = contextual_depth
         self.blocks = nn.ModuleList([
@@ -222,11 +223,13 @@ class MaskedAutoencoderViT(nn.Module):
         specs: (N, 1, H, W)
         """
         p = self.patch_embed.patch_size[0]    
-        h = 1024//p
-        w = 128//p
-        x = x.reshape(shape=(x.shape[0], h, w, p, p, 1))
+        C = self.in_chans
+        # h = self.patch_embed.pat//p
+        # w = 128//p
+        h, w = self.patch_embed.patch_hw
+        x = x.reshape(shape=(x.shape[0], h, w, p, p, C))
         x = torch.einsum('nhwpqc->nchpwq', x)
-        specs = x.reshape(shape=(x.shape[0], 1, h * p, w * p))
+        specs = x.reshape(shape=(x.shape[0], C, h * p, w * p))
         return specs
 
     def random_masking(self, x, mask_ratio):

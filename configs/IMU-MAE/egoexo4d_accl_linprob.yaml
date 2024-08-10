@@ -1,5 +1,5 @@
 task_name: "imu"
-linprob: False
+linprob: True
 dataset_train: {
   data_dir: '/data2/EgoExo4D',
   annotations_file: './data/EgoExo4D/keysteps/train_takes.pkl',
@@ -8,8 +8,8 @@ dataset_train: {
   preload: True,
   tasks_file: '/data2/EgoExo4D/annotations/keystep_train.json',
   labels_file: './data/EgoExo4D/verbs_mapping_keystep.pkl',
-  mean: ./data/EgoExo4D/mean_std/accl_mean.pt,
-  std: ./data/EgoExo4D/mean_std/accl_std.pt,
+  mean: ./data/EgoExo4D/mean_std/accl_mean_128x320.pt,
+  std: ./data/EgoExo4D/mean_std/accl_std_128x320.pt,
 }
 dataset_valid: {
   data_dir: '/data2/EgoExo4D',
@@ -19,8 +19,8 @@ dataset_valid: {
   preload: True,
   tasks_file: '/data2/EgoExo4D/annotations/keystep_val.json',
   labels_file: './data/EgoExo4D/verbs_mapping_keystep.pkl',
-  mean: ./data/EgoExo4D/mean_std/accl_mean.pt,
-  std: ./data/EgoExo4D/mean_std/accl_std.pt,
+  mean: ./data/EgoExo4D/mean_std/accl_mean_128x320.pt,
+  std: ./data/EgoExo4D/mean_std/accl_std_128x320.pt,
 }
 mean_std: {
   save_path: None,
@@ -46,7 +46,7 @@ model: {
   embed_dim: 384, # ViT-S: 384, ViT-B: 768, ViT-L: 1024, ViT-H: 1280
   # depth: 12,
   # mask_ratio: 0.9,
-  mask_2d: True,
+  mask_2d: False,
   # mask_t_prob: 0.2,
   # mask_f_prob: 0.2,
   # drop_path: 0.1,

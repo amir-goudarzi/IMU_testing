@@ -4,7 +4,7 @@ import os
 import math
 
 import torch, torchaudio
-from torchvision.transforms import Compose, Resize
+from torchvision.transforms import Compose, Resize, Normalize
 import torchaudio.transforms as T
 from torch.utils.data import Dataset
 import torch.nn as nn
@@ -28,6 +28,8 @@ class SpectrogramsGenerator(object):
             downsampling_rate,
             transforms,
             resizes: tuple[int, int],
+            mean: tuple[float, float, float],
+            std: tuple[float, float, float],
             overlap_in_s=None,
         ):
         super(SpectrogramsGenerator, self).__init__()
@@ -58,6 +60,7 @@ class SpectrogramsGenerator(object):
 
         if transforms:
             self.transforms.append(transforms)
+        self.normalize = Normalize(mean, std)
 
     def __call__(self, x: torch.Tensor):
         resample_ratio =  self.temporal_points * self.window_size / x.shape[1]
@@ -65,5 +68,6 @@ class SpectrogramsGenerator(object):
         waveform = T.Resample(self.sampling_rate, resample_target)(x)
         spectrogram = self.transforms(waveform)
         spectrogram_db = T.AmplitudeToDB()(spectrogram)
+        spectrogram_db = self.normalize(spectrogram_db)
         return spectrogram_db
         

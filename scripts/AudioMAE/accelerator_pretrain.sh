@@ -7,13 +7,14 @@ patch=16
 model=mae_vit_small_patch$patch
 nodes=1
 gpus_per_node=2
+MASTER_PORT=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
 
 for mask_ratio in 0.6 0.7 0.8 0.9
 do
-    accelerate launch src/dist_pretrain_accelerate.py \
+    accelerate launch --main_process_port $MASTER_PORT src/dist_pretrain_accelerate.py \
         --log_dir $experiments_dir/mask_ratio{$mask_ratio}_$model \
         --output_dir $experiments_dir/mask_ratio{$mask_ratio}_$model \
-        --config ./configs/IMU-MAE/egoexo4d_accl_omni.yaml \
+        --config ./configs/IMU-MAE/egoexo4d_accl.yaml \
         --model $model \
         --epochs 32 \
         --blr 2e-4 \

@@ -93,6 +93,8 @@ def train_one_epoch(model: torch.nn.Module,
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
+    if accelerator.is_main_process:
+        accelerator.log({'train_loss': metric_logger.loss.global_avg, 'lr': metric_logger.lr.global_avg}, step=epoch)
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
@@ -107,11 +109,11 @@ def train_fn(task_name):
     
     
 # TODO: write imu_omnivore function for finetuning.
-def imu_omnivore(model, device, samples, args):
+def imu_omnivore(model, device, samples, autocast, args):
     imu, omnivore = samples
     imu = imu.to(device, non_blocking=True)
     omnivore = omnivore.to(device, non_blocking=True)
-    with torch.cuda.amp.autocast():
+    with autocast.autocast():
         emb_enc, mask, ids_restore, _ = model.forward_encoder(imu, args.mask_ratio, mask_2d=model.mask_2d)
 
         omnivore = omnivore.repeat(1, emb_enc.shape[1], 1)
