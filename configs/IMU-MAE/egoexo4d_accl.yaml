@@ -6,8 +6,8 @@ dataset: {
   stream_labels: ["imu-left", "imu-right"],
   sensors: ["accl"],
   preload: True,
-  mean: ./data/EgoExo4D/mean_std/accl_mean_128x320.pt,
-  std: ./data/EgoExo4D/mean_std/accl_std_128x320.pt,
+  mean: ./data/EgoExo4D/mean_std/accl_mean_left.pt,
+  std: ./data/EgoExo4D/mean_std/accl_std_left.pt,
 }
 mean_std: {
   save_path: None,

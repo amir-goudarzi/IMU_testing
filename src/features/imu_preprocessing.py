@@ -68,6 +68,7 @@ class SpectrogramsGenerator(object):
         waveform = T.Resample(self.sampling_rate, resample_target)(x)
         spectrogram = self.transforms(waveform)
         spectrogram_db = T.AmplitudeToDB()(spectrogram)
+        # TODO: remove the following line for normalization on amplitude
         spectrogram_db = self.normalize(spectrogram_db)
         return spectrogram_db
         

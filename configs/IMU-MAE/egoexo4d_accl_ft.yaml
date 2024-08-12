@@ -8,8 +8,8 @@ dataset_train: {
   preload: True,
   tasks_file: '/data2/EgoExo4D/annotations/keystep_train.json',
   labels_file: './data/EgoExo4D/verbs_mapping_keystep.pkl',
-  mean: ./data/EgoExo4D/mean_std/accl_mean_128x320.pt,
-  std: ./data/EgoExo4D/mean_std/accl_std_128x320.pt,
+  mean: ./data/EgoExo4D/mean_std/accl_mean_left.pt,
+  std: ./data/EgoExo4D/mean_std/accl_std_left.pt,
 }
 dataset_valid: {
   data_dir: '/data2/EgoExo4D',
@@ -19,8 +19,8 @@ dataset_valid: {
   preload: True,
   tasks_file: '/data2/EgoExo4D/annotations/keystep_val.json',
   labels_file: './data/EgoExo4D/verbs_mapping_keystep.pkl',
-  mean: ./data/EgoExo4D/mean_std/accl_mean_128x320.pt,
-  std: ./data/EgoExo4D/mean_std/accl_std_128x320.pt,
+  mean: ./data/EgoExo4D/mean_std/accl_mean_left.pt,
+  std: ./data/EgoExo4D/mean_std/accl_std_left.pt,
 }
 mean_std: {
   save_path: None,

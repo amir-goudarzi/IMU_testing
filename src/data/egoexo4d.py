@@ -12,7 +12,7 @@ from time import time
 from copy import deepcopy
 
 from features.imu_preprocessing import SpectrogramsGenerator
-from features.transforms import normalize_tensor, cut_and_pad
+from features.transforms import normalize_tensor, cut_and_pad, cut_and_pad_lr
 from data.dataset import register_dataset
 from utils.utils import create_binary_array
 
@@ -76,6 +76,7 @@ class EgoExo4D(Dataset):
             transforms=transforms,
             resizes=resizes,
             temporal_points=temporal_points,
+            # TODO: remove the following lines of code for normalizing amplitude
             mean=self.mean,
             std=self.std
         )
@@ -139,14 +140,23 @@ class EgoExo4D(Dataset):
         end_s = take['end_sec']
 
         # Get IMU data
-        left, right = self.__load_imu__(take_name, start_s, end_s)
+        left = self.__load_imu__(take_name, start_s, end_s)
+        # left, right = self.__load_imu__(take_name, start_s, end_s)
 
         # Cut the IMU data
-        left = cut_and_pad(left, self.sampling_rate, self.window_size)
-        right = cut_and_pad(right, self.sampling_rate, self.window_size)
+        # TODO: put cut_and_pad_lr
+        padding = 'left' if start_s < 0 else 'right'
+        left = cut_and_pad_lr(left, self.sampling_rate, self.window_size, padding)
+        # right = cut_and_pad_lr(right, self.sampling_rate, self.window_size, padding)
 
         # Compute the mean of the IMU data
-        return self.__compute_mean__(left, right)
+        # TODO: uncomment here for normalizing amplitude
+        # TODO: not doing mean, just consider left or right sensor.
+        # imu = self.__compute_mean__(left, right)
+        # return F.normalize(imu, self.mean, self.std)
+        # return self.__compute_mean__(left, right)
+        # TODO: swap indexes
+        return left
 
     
 
@@ -174,29 +184,34 @@ class EgoExo4D(Dataset):
             if "gyro" not in self.sensors:
                 channels = 3
             # 1 KHz
-            imu_right = torch.from_numpy(np.load(os.path.join(take_path, f'right.npy'))).type(torch.float32).T
+            # imu_right = torch.from_numpy(np.load(os.path.join(take_path, f'right.npy'))).type(torch.float32).T
+            # imu_right = imu_right[:channels+1, :]
 
             # 800 Hz
             imu_left = torch.from_numpy(np.load(os.path.join(take_path, f'left.npy'))).type(torch.float32).T
             imu_left = imu_left[:channels+1, :]
-            imu_right = imu_right[:channels+1, :]
-            self.cache[take_name] = (imu_left, imu_right)
+            
+            # self.cache[take_name] = (imu_left, imu_right)
+            self.cache[take_name] = imu_left
         else:
-            imu_left, imu_right = self.cache[take_name]
+            imu_left = self.cache[take_name]
+            # imu_left, imu_right = self.cache[take_name]
 
         if preload:
             return imu_left
 
-        effective_start = imu_left[0,0] if imu_left[0,0] > imu_right[0,0] else imu_right[0,0]
+        effective_start = imu_left[0,0]
+        # effective_start = imu_left[0,0] if imu_left[0,0] > imu_right[0,0] else imu_right[0,0]
 
         # Align to the first timestamp
         start_ns += effective_start
         end_ns += effective_start
 
-        right = self.resample_right(imu_right[1:, (imu_right[0] >= start_ns) & (imu_right[0] < end_ns)])
+        # right = self.resample_right(imu_right[1:, (imu_right[0] >= start_ns) & (imu_right[0] < end_ns)])
         left = self.resample_left(imu_left[1:, (imu_left[0] >= start_ns) & (imu_left[0] < end_ns)])
 
-        return left, right
+        # return left, right
+        return left
         
         
     def __compute_mean__(self, left, right) -> torch.Tensor:

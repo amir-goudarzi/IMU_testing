@@ -97,9 +97,14 @@ def main(args, matrix_type='64x64', seconds=2):
     #     resizes=spectrogram_cfg['resizes']
     # )
 
+    accl_stats = {
+        'psum': torch.zeros(3),
+        'psum_sq': torch.zeros(3),
+        'count': 0
+    }
+
     cfg = load_config(args.config)
     # config['device'] = rank
-    cfg['dataset']['preload'] = True
     dataset = make_dataset(
         name=args.dataset,
         is_pretrain=True,
@@ -109,42 +114,27 @@ def main(args, matrix_type='64x64', seconds=2):
     )
     # Create a data loader
     batch_size = 512
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-
-    accl_stats = {
-        'psum': torch.zeros(3).to(DEVICE),
-        'psum_sq': torch.zeros(3).to(DEVICE),
-        'count': torch.tensor(0).to(DEVICE),
-    }
-
-    gyro_stats = {
-        'psum': torch.zeros(3).to(DEVICE),
-        'psum_sq': torch.zeros(3).to(DEVICE),
-        'count': torch.tensor(0).to(DEVICE),
-    }
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=20)
     dataset_len = len(dataset)
+    channels_sum, channels_squared_sum, num_batches = 0, 0, 0
     accl_tot = None
-
     # for i, data in enumerate(dataloader):
-    for i, (data, _) in enumerate(dataloader):
+    for i, data  in enumerate(dataloader):
         print(f'{i}/{dataset_len//batch_size}')
         accl = data.to(DEVICE)
-        if accl_tot is None:
-            accl_tot = accl.type(torch.float16)
-        else:
-            accl_tot = torch.cat((accl_tot, accl.type(torch.float16)), dim=0)
+        # if accl_tot is None:
+        #     accl_tot = accl.type(torch.float16)
+        # else:
+        #     accl_tot = torch.cat((accl_tot, accl.type(torch.float16)), axis=0)
 
     # for i, (data, target) in enumerate(dataloader):
         # accl, gyro = data[:, :3], data[:, 3:]
         # accl = accl.to(DEVICE)
         # gyro = gyro.to(DEVICE)
-        # accl_stats['psum'] += accl.sum(dim = (0, 2, 3))
-        # accl_stats['psum_sq'] += (accl ** 2).sum(dim = (0, 2, 3))
-        # accl_stats['count'] += accl.shape[0]
+        accl_stats['psum'] += accl.sum(axis = [0, 2, 3])
+        accl_stats['psum_sq'] += (accl ** 2).sum(axis = [0, 2, 3])
+        accl_stats['count'] += accl.shape[0]
 
-        # gyro_stats['psum'] += gyro.sum(dim = (0, 2, 3))
-        # gyro_stats['psum_sq'] += (gyro ** 2).sum(dim = (0, 2, 3))
-        # gyro_stats['count'] += gyro.shape[0]
 
     
 
@@ -155,10 +145,11 @@ def main(args, matrix_type='64x64', seconds=2):
     # gyro_stats['psum_sq'].to('cpu')
     # gyro_stats['count'].to('cpu')
 
-    # div = accl_stats['count'] * 64 * 64
+    div = accl_stats['count'] * accl.shape[2] * accl.shape[3]
     
-    # accl_mean = accl_stats['psum'] / div
-    # accl_std  = torch.sqrt(accl_stats['psum_sq'] / div - accl_mean ** 2)
+    accl_mean = accl_stats['psum'] / div
+
+    accl_std  = torch.sqrt(accl_stats['psum_sq'] / div - accl_mean ** 2)
 
     # div = gyro_stats['count'] * 64 * 64
     # gyro_mean = gyro_stats['psum'] / div
@@ -166,16 +157,16 @@ def main(args, matrix_type='64x64', seconds=2):
     
     # accl_mean = accl_tot.mean(dim=(0, 2, 3))
     # accl_std = accl_tot.std(dim=(0, 2, 3))
-    accl_mean = accl_tot.mean(dim=(0, 2))
-    accl_std = accl_tot.std(dim=(0, 2))
+    # accl_mean = accl_tot.mean(dim=(0, 2))
+    # accl_std = accl_tot.std(dim=(0, 2))
     print(f'{accl_mean=}, {accl_std=}')
 
     # save_path = config['mean_std']['save_path']
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path)
 
-    torch.save(accl_mean, os.path.join(args.save_path, f'accl_mean.pt'))
-    torch.save(accl_std, os.path.join(args.save_path, f'accl_std.pt'))
+    torch.save(accl_mean, os.path.join(args.save_path, f'accl_mean_left.pt'))
+    torch.save(accl_std, os.path.join(args.save_path, f'accl_std_left.pt'))
     # print(f'{gyro_mean=}, {gyro_std=}')
 
 
