@@ -92,6 +92,7 @@ def main(args):
                     data_loader=valid_loader,
                     model=model,
                     accelerator=accelerator,
+                    criterion=criterion,
                     args=args,
                     epoch=epoch,
                     task_name=cfg['task_name']
@@ -106,7 +107,7 @@ def main(args):
                 max_accuracy = max(max_accuracy, test_stats["acc1"])
                 print(f'Max accuracy: {max_accuracy:.2f}%')
             else:
-                test_stats ={'acc1': 0.0, 'acc5': 0.0, 'loss': 0.0}
+                test_stats ={'acc1': 0.0, 'acc5': 0.0, 'loss': 0.0, 'mAP': 0.0, 'mAUC': 0.0}
                 print(f'too new to evaluate!')
             
 

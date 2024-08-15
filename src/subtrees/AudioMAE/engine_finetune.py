@@ -10,14 +10,18 @@
 # --------------------------------------------------------
 
 import math
+import numpy as np
 import sys
 from typing import Iterable, Optional
+from sklearn.preprocessing import LabelBinarizer
+
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from timm.data import Mixup
 from timm.utils import accuracy
+from .util.stat import calculate_stats
 
 from .util import misc
 from .util import lr_sched
@@ -114,41 +118,66 @@ def evaluate(
         data_loader: Iterable,
         model: torch.nn.Module,
         accelerator: None | accelerate.Accelerator,
+        criterion,
         args,
         epoch: int,
         task_name='imu',
     ):
-    criterion = torch.nn.CrossEntropyLoss()
+    # criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = 'Test:'
 
+    lb = LabelBinarizer()
+    lb.fit(range(model.module.num_classes))
+
     # switch to evaluation mode
     model.eval()
     train_forward = train_fn(task_name)
-    
+    outputs = []
+    targets = []
+
     for batch in metric_logger.log_every(data_loader, 10, header):
         images = batch[0]
         target = batch[-1]
         # images = images.to(device, non_blocking=True)
         # target = target.to(device, non_blocking=True)
-
+        target = torch.tensor(lb.transform(target.cpu().numpy())).type(torch.float32).to(accelerator.device)
         # compute output
         output, loss = train_forward(model, images, target, criterion, accelerator, args)
         output, target = accelerator.gather_for_metrics((output, target))
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
-
+        
+        outputs.append(output)
+        targets.append(target)
+        
+        acc1, acc5 = accuracy(output, torch.argmax(target, dim=1), topk=(1, 5))
         batch_size = images.shape[0]
         metric_logger.update(loss=loss.item())
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
         metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+    
+    outputs=torch.cat(outputs).cpu().numpy()
+    targets=torch.cat(targets).cpu().numpy()
+    stats = calculate_stats(outputs, targets)
+    AP = [stat['AP'] for stat in stats]
+    AUC = [stat['auc'] for stat in stats]
+
+    mAP = np.mean([stat['AP'] for stat in stats])
+    mAUC = np.mean([stat['auc'] for stat in stats])
+
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
           .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
     
     if accelerator.is_main_process:
-        accelerator.log({'valid_loss': metric_logger.loss.global_avg, 'acc1': metric_logger.acc1.global_avg, 'acc5': metric_logger.acc5.global_avg}, step=epoch)
+        accelerator.log({
+            'valid_loss': metric_logger.loss.global_avg,
+            'acc1': metric_logger.acc1.global_avg,
+            'acc5': metric_logger.acc5.global_avg,
+            'mAP': mAP,
+            'mAUC': mAUC,
+        }, step=epoch)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 def train_fn(task_name):

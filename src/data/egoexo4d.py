@@ -103,8 +103,8 @@ class EgoExo4D(Dataset):
         take = self.takes[idx]
         
         #FIXME: Uncomment for classifying
-        # return self.getitem(take), take['label']
-        return self.getitem(take)
+        return self.getitem(take), self.labels_file[self.labels_file['verb_idx'] == take['label']].iloc[0]['act_idx']
+        # return self.getitem(take)
         # return self.getitem(take), create_binary_array(109, 0)
 
 
