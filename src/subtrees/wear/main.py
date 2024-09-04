@@ -27,7 +27,6 @@ import matplotlib.pyplot as plt
 from camera_baseline.actionformer.main import run_actionformer
 from camera_baseline.tridet.main import run_tridet
 
-
 def main(args):
     if args.neptune:
         run = neptune.init_run(
@@ -85,6 +84,10 @@ def main(args):
             t_losses, v_losses, v_mAP, v_preds, v_gt = run_actionformer(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run, args)
         elif config['name'] == 'tridet':
             t_losses, v_losses, v_mAP, v_preds, v_gt = run_tridet(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run)
+        elif config['name'] == 'actionformer_vit_pretrained':
+            t_losses, v_losses, v_mAP, v_preds, v_gt = run_actionformer_vit_pretrained(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run, args)
+        elif config['name'] == 'tridet_vit_pretrained':
+            t_losses, v_losses, v_mAP, v_preds, v_gt = run_tridet_vit_pretrained(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run)
         
         # raw results
         conf_mat = confusion_matrix(v_gt, v_preds, normalize='true', labels=range(len(config['labels'])))

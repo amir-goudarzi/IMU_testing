@@ -1,11 +1,12 @@
 import torch
-from torch.nn import BCEWithLogitsLoss
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss
 from torch.utils.data import DataLoader
 import os
 import sys
 import json
 import time
 import datetime
+import pandas as pd
 
 from accelerate import Accelerator, GradScalerKwargs
 
@@ -20,6 +21,7 @@ from subtrees.AudioMAE.util.misc import NativeScalerWithGradNormCount as NativeS
 from subtrees.AudioMAE.util.misc import AcceleratorScalerWithGradNormCount as AcceleratorScaler
 import subtrees.AudioMAE.util.lr_decay as lrd
 from torch.utils.tensorboard import SummaryWriter
+from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
 from data.dataset import make_dataset
 
@@ -44,10 +46,22 @@ def main(args):
         mask_ratio = args.mask_t_prob
     accelerator.init_trackers(f"imu_{linprob}", config=config, init_kwargs={"wandb":{"name":f"{masking2d}_{mask_ratio}"}})
 
+    class_labels = None
+    training_priors = None
+    if args.label_pkl:
+        label_file = pd.read_pickle(args.label_pkl)
+        label_file = label_file.sort_values(by='act_idx')
+        class_labels = label_file['label_name_y'].values.tolist()
+        training_priors = label_file['count_x'].apply(lambda x: label_file['count_x'].sum() / x).values.tolist()
+        training_priors = torch.tensor(training_priors)
 
-    train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args)
+    if args.mixup > 0.0:
+        train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args)
+    else:
+        train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args, training_priors=training_priors)
     load_model(args.finetune, args.eval, model)
     args.nb_classes = cfg['model']['num_classes']
+    mixup_fn = None
     mixup_fn = get_mixup(args)
 
     # Check to choose if you want to use the SummaryWriter (Tensorboard) or not.
@@ -65,7 +79,7 @@ def main(args):
     # accelerator.wait_for_everyone()
 
     loss_scaler = AcceleratorScaler(accelerator=accelerator)
-    model, optimizer, train_loader, valid_loader = accelerator.prepare(model, optimizer, train_loader, valid_loader)
+    model, optimizer, train_loader, valid_loader, criterion = accelerator.prepare(model, optimizer, train_loader, valid_loader, criterion)
 
     if accelerator.is_main_process:
         print(f"Start training for {args.epochs} epochs")
@@ -92,10 +106,10 @@ def main(args):
                     data_loader=valid_loader,
                     model=model,
                     accelerator=accelerator,
-                    criterion=criterion,
                     args=args,
                     epoch=epoch,
-                    task_name=cfg['task_name']
+                    task_name=cfg['task_name'],
+                    class_labels=class_labels
                 )
         accelerator.wait_for_everyone()
         if accelerator.is_main_process:
@@ -107,7 +121,14 @@ def main(args):
                 max_accuracy = max(max_accuracy, test_stats["acc1"])
                 print(f'Max accuracy: {max_accuracy:.2f}%')
             else:
-                test_stats ={'acc1': 0.0, 'acc5': 0.0, 'loss': 0.0, 'mAP': 0.0, 'mAUC': 0.0}
+                test_stats ={
+                    'acc1': 0.0,
+                    'acc5': 0.0,
+                    'valid_loss': 0.0,
+                    'mAP': 0.0,
+                    'mAUC': 0.0,
+                    'per_class_accuracy': {class_labels[i]: 0.0 for i in range(model.module.num_classes)},
+                    }
                 print(f'too new to evaluate!')
             
 
@@ -131,7 +152,7 @@ def main(args):
     accelerator.end_training()
 
 
-def load_train_objs(cfg, args):
+def load_train_objs(cfg, args, training_priors=None):
 
     if args.dataset == 'wear':
         train_set = make_dataset(
@@ -213,8 +234,15 @@ def load_train_objs(cfg, args):
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
     # loss_scaler = NativeScaler()
 
-    criterion = BCEWithLogitsLoss()
-
+    if args.use_soft:
+        criterion = SoftTargetCrossEntropy() 
+    else:
+        if training_priors is not None:
+            criterion = BCEWithLogitsLoss(weight=training_priors) # works better
+        else:
+            criterion = BCEWithLogitsLoss()
+    # criterion = CrossEntropyLoss()
+    # criterion = SoftTargetCrossEntropy()
     return train_loader, valid_loader, model, optimizer, criterion
 
 if __name__ == "__main__":

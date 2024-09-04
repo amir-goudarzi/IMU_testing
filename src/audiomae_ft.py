@@ -172,7 +172,7 @@ def get_args_parser():
     parser.add_argument('--audio_exp', action='store_true', help='audio exp')
     parser.add_argument("--data_train", type=str, default='/checkpoint/berniehuang/ast/egs/audioset/data/datafiles/train_video.json', help="training data json")
     parser.add_argument("--data_eval", type=str, default='/checkpoint/berniehuang/ast/egs/audioset/data/datafiles/eval_video.json', help="validation data json")
-    parser.add_argument("--label_pkl", type=str, default='./data/EgoExo4D/verbs_mapping_keystep.pkl', help="pkl with class labels")
+    parser.add_argument("--label_pkl", type=str, default='./data/EgoExo4D/keysteps/labels_num_str_mapped.pkl', help="pkl with class labels")
     parser.add_argument("--weight_csv", type=str, default='/checkpoint/berniehuang/mae/data/audioset/weight_train_all.csv', help="weight file")
     
     parser.add_argument('--freqm', help='frequency mask max length', type=int, default=192)

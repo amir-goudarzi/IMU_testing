@@ -32,10 +32,11 @@ class MaskedAutoencoderViT(nn.Module):
                  audio_exp=False, alpha=0.0, temperature=.2, mode=0, contextual_depth=8,
                  use_custom_patch=False, split_pos=False, pos_trainable=False, use_nce=False, beta=4.0, decoder_mode=0,
                  mask_t_prob=0.6, mask_f_prob=0.5, mask_2d=False,
-                 epoch=0, no_shift=False,
+                 epoch=0, no_shift=False, contains_omni=True,
                  ):
         super().__init__()
 
+        self.contains_omni=contains_omni
         self.audio_exp=audio_exp
         self.embed_dim = embed_dim
         self.decoder_embed_dim = decoder_embed_dim
@@ -64,7 +65,10 @@ class MaskedAutoencoderViT(nn.Module):
 
         # --------------------------------------------------------------------------
         # MAE decoder specifics
-        self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)
+        if contains_omni:
+            self.decoder_embed = nn.Linear(embed_dim + 1536, decoder_embed_dim, bias=True)
+        else:
+            self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)
 
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
         self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=pos_trainable)  # fixed sin-cos embedding
@@ -428,7 +432,23 @@ class MaskedAutoencoderViT(nn.Module):
         return loss      
 
     def forward(self, imgs, mask_ratio=0.8):
+        if self.contains_omni:
+            return self.forward_mask_omni(imgs, mask_ratio)
+        else:
+            return self.forward_mask_default(imgs, mask_ratio)
+
+    def forward_mask_default(self, imgs: torch.Tensor, mask_ratio=0.8):
         emb_enc, mask, ids_restore, _ = self.forward_encoder(imgs, mask_ratio, mask_2d=self.mask_2d)
+        pred, _, _ = self.forward_decoder(emb_enc, ids_restore)  # [N, L, p*p*3]
+        loss_recon = self.forward_loss(imgs, pred, mask, norm_pix_loss=self.norm_pix_loss)
+        loss_contrastive = torch.FloatTensor([0.0]).cuda()
+        return loss_recon, pred, mask, loss_contrastive
+    
+    def forward_mask_omni(self, imgs: torch.Tensor, mask_ratio=0.8):
+        imgs, omni = imgs
+        emb_enc, mask, ids_restore, _ = self.forward_encoder(imgs, mask_ratio, mask_2d=self.mask_2d)
+        omni = omni.repeat(1, emb_enc.shape[1], 1)
+        emb_enc = torch.cat((emb_enc, omni), dim=-1)
         pred, _, _ = self.forward_decoder(emb_enc, ids_restore)  # [N, L, p*p*3]
         loss_recon = self.forward_loss(imgs, pred, mask, norm_pix_loss=self.norm_pix_loss)
         loss_contrastive = torch.FloatTensor([0.0]).cuda()

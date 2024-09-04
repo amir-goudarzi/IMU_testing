@@ -1,5 +1,5 @@
 device: 'cuda:1'
-task_name: "imu"
+task_name: "imu_omnivore"
 dataset: {
   data_dir: '/data2/EgoExo4D',
   annotations_file: './data/EgoExo4D/annotations_train.pkl',
@@ -50,6 +50,7 @@ model: {
   use_nce: False,
   norm_pix_loss: True,
   audio_exp: False,
+  contains_omni: True,
   128x320: {
     patch_size: !!python/tuple [16, 16],
   },

@@ -8,6 +8,9 @@ dataset: {
   preload: True,
   mean: ./data/EgoExo4D/mean_std/accl_mean_left.pt,
   std: ./data/EgoExo4D/mean_std/accl_std_left.pt,
+  normalize: False,
+  visual: True,
+  is_train: False
 }
 mean_std: {
   save_path: None,
@@ -28,7 +31,7 @@ spectrogram_params: {
 }
 model: {
   name: 'mae_vit_base_patch',
-  in_chans: 3,
+  in_chans: 1,
   # embed_dim: 384,
   # depth: 12,
   # mask_ratio: 0.9,
@@ -48,7 +51,7 @@ model: {
   decoder_mode: 1,
   no_shift: False,
   use_nce: False,
-  norm_pix_loss: True,
+  norm_pix_loss: False,
   audio_exp: False,
   128x320: {
     patch_size: !!python/tuple [16, 16],

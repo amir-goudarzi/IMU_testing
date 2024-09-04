@@ -31,6 +31,9 @@ class SpectrogramsGenerator(object):
             mean: tuple[float, float, float],
             std: tuple[float, float, float],
             overlap_in_s=None,
+            is_train=False,
+            freqm=48,
+            timem=60
         ):
         super(SpectrogramsGenerator, self).__init__()
         self.window_size = window_size
@@ -43,13 +46,16 @@ class SpectrogramsGenerator(object):
                 n_fft=n_fft,
                 win_length=win_length,
                 hop_length=hop_length,
-                center=True,
-                pad_mode="reflect",
-                power=2.0,
-                normalized=True
+                # center=True,
+                # pad_mode="reflect",
+                # power=2.0,
+                # normalized=True
                 ),
             Resize(resizes)
         )
+        self.freqm = T.FrequencyMasking(freqm)
+        self.timem = T.TimeMasking(timem)
+        self.is_train = is_train
 
         if self.downsampling_rate is not None:
             tmp = deepcopy(self.transforms)
@@ -60,6 +66,10 @@ class SpectrogramsGenerator(object):
 
         if transforms:
             self.transforms.append(transforms)
+            
+        if is_train:
+            self.transforms.append(self.freqm)
+            self.transforms.append(self.timem)
         self.normalize = Normalize(mean, std)
 
     def __call__(self, x: torch.Tensor):
@@ -71,4 +81,4 @@ class SpectrogramsGenerator(object):
         # TODO: remove the following line for normalization on amplitude
         spectrogram_db = self.normalize(spectrogram_db)
         return spectrogram_db
-        
+

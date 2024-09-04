@@ -110,16 +110,9 @@ def train_fn(task_name):
     
 # TODO: write imu_omnivore function for finetuning.
 def imu_omnivore(model, device, samples, autocast, args):
-    imu, omnivore = samples
-    imu = imu.to(device, non_blocking=True)
-    omnivore = omnivore.to(device, non_blocking=True)
     with autocast.autocast():
-        emb_enc, mask, ids_restore, _ = model.forward_encoder(imu, args.mask_ratio, mask_2d=model.mask_2d)
-
-        omnivore = omnivore.repeat(1, emb_enc.shape[1], 1)
-        pred, _, _ = model.forward_decoder(emb_enc, ids_restore)  # [N, L, p*p*3]
-        
-        loss_a = model.forward_loss(imu, pred, mask, norm_pix_loss=model.norm_pix_loss)
+        imu, omnivore = samples
+        loss_a, _, _, _ = model((imu, omnivore), mask_ratio=args.mask_ratio)
     loss_value = loss_a.item()
     loss_total = loss_a
     
@@ -129,7 +122,9 @@ def imu_omnivore(model, device, samples, autocast, args):
 def imu(model, device, samples, autocast, args):
     # samples = samples.to(device, non_blocking=True)
     with autocast.autocast():
-        samples = samples.type(torch.bfloat16)
+        # samples = samples.type(torch.bfloat16)
+        # TODO: remove it for pretraining
+        # samples = samples.unsqueeze(1)
         loss_a, _, _, _ = model(samples, mask_ratio=args.mask_ratio)
     loss_value = loss_a.item()
     loss_total = loss_a

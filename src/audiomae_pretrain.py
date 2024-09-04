@@ -57,10 +57,10 @@ def get_args_parser():
     parser.add_argument('--mask_ratio', default=0.8, type=float, 
                         help='Masking ratio (percentage of removed patches).') # 0.75
 
-    #parser.add_argument('--norm_pix_loss', action='store_true',
-    #                    help='Use (per-patch) normalized pixels as targets for computing loss')
-    parser.add_argument('--norm_pix_loss', type=bool, default=False, help='Use (per-patch) normalized pixels as targets for computing loss')
-    
+    parser.add_argument('--norm_pix_loss', action='store_true',
+                       help='Use (per-patch) normalized pixels as targets for computing loss')
+    # set norm_pix_loss=True for normal training, norm_pix_loss=False for visualization
+    parser.set_defaults(norm_pix_loss=False)
 
     # Optimizer parameters
     parser.add_argument('--weight_decay', type=float, default=0.05,
@@ -150,8 +150,7 @@ def get_args_parser():
     parser.add_argument('--seconds', type=int, default=2)
     parser.add_argument('--matrix_type', type=str, default='64x64')
     parser.add_argument("--filename_split", type=str, default='wear_split_1.pkl', help="filename for split")
-    # set norm_pix_loss=True for normal training, norm_pix_loss=False for visualization
-    parser.set_defaults(norm_pix_loss=True)
+
     return parser
 
 

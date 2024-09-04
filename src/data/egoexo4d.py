@@ -2,6 +2,8 @@ import torch
 from torch.utils.data import Dataset
 import torchaudio.transforms as T
 from torchvision.transforms import functional as F
+import torch.nn as nn
+
 import json
 import pandas as pd
 import os
@@ -42,7 +44,12 @@ class EgoExo4D(Dataset):
             tasks_file=None,
             labels_file=None,
             mean=None,
-            std=None
+            std=None,
+            normalize=True,
+            is_train=False,
+            freqm=48,
+            timem=60,
+            visual=False
         ):
         assert os.path.isfile(annotations_file), "Invalid path to EgoExo4D annotations"
         assert os.path.exists(data_dir), "Invalid path to EgoExo4D data"
@@ -60,11 +67,15 @@ class EgoExo4D(Dataset):
         self.preload = preload
         self.tasks_file = None if tasks_file is None else json.load(open(tasks_file, 'r'))
         self.labels_file = pd.read_pickle(labels_file) if labels_file is not None else labels_file
-
+        self.normalize = normalize
+        self.is_train = is_train
+        self.visual = visual
+        
         if mean is not None and std is not None:
             self.mean = torch.load(mean)
             self.std = torch.load(std)
 
+        
         self.transforms = SpectrogramsGenerator(
             window_size=window_size,
             # overlap_in_s=overlap_in_s,
@@ -78,7 +89,10 @@ class EgoExo4D(Dataset):
             temporal_points=temporal_points,
             # TODO: remove the following lines of code for normalizing amplitude
             mean=self.mean,
-            std=self.std
+            std=self.std,
+            is_train=is_train,
+            freqm=freqm,
+            timem=timem
         )
 
         self.resample_left =  T.Resample(800, self.sampling_rate)
@@ -105,13 +119,17 @@ class EgoExo4D(Dataset):
         #FIXME: Uncomment for classifying
         return self.getitem(take), self.labels_file[self.labels_file['verb_idx'] == take['label']].iloc[0]['act_idx']
         # return self.getitem(take)
-        # return self.getitem(take), create_binary_array(109, 0)
-
 
     def __define_get_function__(self):
         def get_imu(take):
             imu = self.__get_imu__(take)
             return self.transforms(imu)
+        
+        def get_imu_visual(take):
+            imu = self.__get_imu__(take)
+            spectrogram = self.transforms(imu)
+            return spectrogram[0,:,:]
+        
         def get_combined(take):
             imu = self.__get_imu__(take)
             spectrogram = self.transforms(imu)
@@ -119,7 +137,10 @@ class EgoExo4D(Dataset):
             return spectrogram, omnivore
         
         if self.task_name == "imu":
-            return get_imu
+            if self.visual:
+                return get_imu_visual
+            else:
+                return get_imu
         else:
             return get_combined
 

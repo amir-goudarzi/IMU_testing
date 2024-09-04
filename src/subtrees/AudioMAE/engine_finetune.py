@@ -12,15 +12,21 @@
 import math
 import numpy as np
 import sys
+import matplotlib.pyplot as plt
 from typing import Iterable, Optional
 from sklearn.preprocessing import LabelBinarizer
-
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import pandas as pd
+import os
+import wandb
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
+from torch.nn.functional import one_hot
 
 from timm.data import Mixup
 from timm.utils import accuracy
+import wandb.plot
 from .util.stat import calculate_stats
 
 from .util import misc
@@ -69,8 +75,10 @@ def train_one_epoch(
 
             if mixup_fn is not None:
                 samples, targets = mixup_fn(samples, targets)
+            else:
+                targets = one_hot(targets, model.module.num_classes).to(torch.float32)
 
-            outputs, loss = train_forward(model, samples, targets, criterion, accelerator, args)
+            outputs, loss = train_forward(model, samples, targets, criterion, accelerator, mask_t_prob=args.mask_t_prob, mask_f_prob=args.mask_f_prob)
 
             loss_value = loss.item()
 
@@ -118,12 +126,12 @@ def evaluate(
         data_loader: Iterable,
         model: torch.nn.Module,
         accelerator: None | accelerate.Accelerator,
-        criterion,
         args,
         epoch: int,
         task_name='imu',
+        class_labels=None | pd.DataFrame
     ):
-    # criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = 'Test:'
@@ -136,31 +144,38 @@ def evaluate(
     train_forward = train_fn(task_name)
     outputs = []
     targets = []
+    outputs_conf_matrix = []
+    targets_conf_matrix = []
 
-    for batch in metric_logger.log_every(data_loader, 10, header):
-        images = batch[0]
-        target = batch[-1]
+    for images, target in metric_logger.log_every(data_loader, 10, header):
+        # images = batch[0]
+        # target = batch[-1]
         # images = images.to(device, non_blocking=True)
         # target = target.to(device, non_blocking=True)
-        target = torch.tensor(lb.transform(target.cpu().numpy())).type(torch.float32).to(accelerator.device)
         # compute output
-        output, loss = train_forward(model, images, target, criterion, accelerator, args)
+        output, loss = train_forward(model, images, target, criterion, accelerator)
         output, target = accelerator.gather_for_metrics((output, target))
         
-        outputs.append(output)
-        targets.append(target)
         
-        acc1, acc5 = accuracy(output, torch.argmax(target, dim=1), topk=(1, 5))
+        # acc1, acc5 = accuracy(output, torch.argmax(target, dim=1), topk=(1, 5))
+        acc1, acc5 = accuracy(output, target, topk=(1, 5))
         batch_size = images.shape[0]
         metric_logger.update(loss=loss.item())
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
         metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+
+        target = torch.tensor(lb.transform(target.cpu().numpy())).type(torch.float32).to(accelerator.device)
+        outputs.append(output)
+        targets.append(target)
+        outputs_conf_matrix.append(output.argmax(dim=1))
+        targets_conf_matrix.append(target.argmax(dim=1))
     
     outputs=torch.cat(outputs).cpu().numpy()
     targets=torch.cat(targets).cpu().numpy()
+    outputs_conf_matrix=torch.cat(outputs_conf_matrix).cpu().numpy()
+    targets_conf_matrix=torch.cat(targets_conf_matrix).cpu().numpy()
+
     stats = calculate_stats(outputs, targets)
-    AP = [stat['AP'] for stat in stats]
-    AUC = [stat['auc'] for stat in stats]
 
     mAP = np.mean([stat['AP'] for stat in stats])
     mAUC = np.mean([stat['auc'] for stat in stats])
@@ -171,13 +186,39 @@ def evaluate(
           .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
     
     if accelerator.is_main_process:
-        accelerator.log({
-            'valid_loss': metric_logger.loss.global_avg,
-            'acc1': metric_logger.acc1.global_avg,
-            'acc5': metric_logger.acc5.global_avg,
-            'mAP': mAP,
-            'mAUC': mAUC,
-        }, step=epoch)
+        # wandb = accelerator.get_tracker('wandb')
+
+        # disp = ConfusionMatrixDisplay(
+        #         confusion_matrix(targets_conf_matrix, outputs_conf_matrix, labels=range(model.module.num_classes), normalize='all'),
+        #         display_labels=class_labels
+        #     )
+        # disp.plot()
+        # plot_path = os.path.join(args.output_dir, f'confusion_matrix_{epoch}.png')
+        # plt.savefig(plot_path)
+        # plt.close()
+
+        if epoch == 5 or epoch + 1 == args.epochs:
+            per_class_accuracy = confusion_matrix(targets_conf_matrix, outputs_conf_matrix, labels=range(model.module.num_classes))
+            per_class_accuracy = per_class_accuracy.diagonal() / per_class_accuracy.sum(axis=1)
+            per_class_accuracy = {class_labels[i]: acc for i, acc in enumerate(per_class_accuracy)}
+            data = [[label, acc] for label, acc in per_class_accuracy.items()]
+            table = wandb.Table(data=data, columns=["class", "accuracy"])
+            accelerator.log({
+                'valid_loss': metric_logger.loss.global_avg,
+                'acc1': metric_logger.acc1.global_avg,
+                'acc5': metric_logger.acc5.global_avg,
+                'mAP': mAP,
+                'mAUC': mAUC,
+                'per_class_accuracy': wandb.plot.bar(table, "class", "accuracy", title="Per-class accuracy"),
+            }, step=epoch)
+        else:
+            accelerator.log({
+                'valid_loss': metric_logger.loss.global_avg,
+                'acc1': metric_logger.acc1.global_avg,
+                'acc5': metric_logger.acc5.global_avg,
+                'mAP': mAP,
+                'mAUC': mAUC,
+            }, step=epoch)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 def train_fn(task_name):
@@ -206,13 +247,13 @@ def imu_omnivore(model, device, samples, args):
     return loss_value, loss_total
 
 
-def imu(model, samples, targets, criterion, autocast, args):
+def imu(model, samples, targets, criterion, autocast, mask_t_prob=0.0, mask_f_prob=0.0):
     # samples = samples.to(device, non_blocking=True)
     with autocast.autocast():
         outputs = model(
             samples,
-            mask_t_prob=args.mask_t_prob,
-            mask_f_prob=args.mask_f_prob
+            mask_t_prob=mask_t_prob,
+            mask_f_prob=mask_f_prob
         )
         loss = criterion(outputs, targets)
 

@@ -34,7 +34,6 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         self.mask_2d = mask_2d
         self.use_custom_patch = use_custom_patch
         self.classification = classification
-        self.final_activation = torch.nn.Sigmoid()
         num_heads=12
         depth=12
         mlp_ratio=4
@@ -184,7 +183,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             x = self.forward_features(x)
         if self.classification:
             x = self.head(x)
-        return self.final_activation(x)
+        return x
     
 
 def vit_small_patch8(**kwargs):

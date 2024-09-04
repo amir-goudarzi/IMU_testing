@@ -52,7 +52,7 @@ def main(args):
         **cfg,
         **vars(args)
     }
-    accelerator.init_trackers(f"imu_pretrain", config=config, init_kwargs={"wandb":{"name":f"mask_ratio={args.mask_ratio}"}})
+    accelerator.init_trackers(f"{cfg['task_name']}_pretrain", config=config, init_kwargs={"wandb":{"name":f"mask_ratio={args.mask_ratio}"}})
     loss_scaler = AcceleratorScaler(accelerator=accelerator)
     dataloader, model, optimizer = accelerator.prepare(dataloader, model, optimizer)
 

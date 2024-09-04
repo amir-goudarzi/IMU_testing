@@ -9,6 +9,7 @@ import torch.backends.cudnn as cudnn
 
 from .lr_schedulers import LinearWarmupMultiStepLR, LinearWarmupCosineAnnealingLR
 from ..modeling import MaskedConv1D, Scale, AffineDropPath, LayerNorm
+from accelerate import Accelerator
 
 
 ################################################################################
@@ -217,7 +218,7 @@ class ModelEma(torch.nn.Module):
 
 
 ################################################################################
-def train_one_epoch(train_loader, model, optimizer, scheduler, model_ema = None, clip_grad_l2norm = -1, model_mae=None):
+def train_one_epoch(train_loader, model, optimizer, scheduler, accelerator: Accelerator,  model_ema = None, clip_grad_l2norm = -1, model_mae=None):
     """Training the model for one epoch"""
     # set up meters
     batch_time = AverageMeter()
@@ -234,33 +235,35 @@ def train_one_epoch(train_loader, model, optimizer, scheduler, model_ema = None,
     # main training loop
     start = time.time()
     for iter_idx, video_list in enumerate(train_loader, 0):
-        # zero out optim
-        optimizer.zero_grad(set_to_none=True)
-        # forward / backward the model
-        losses = model(video_list, model_mae)
-        losses['final_loss'].backward()
-        # gradient cliping (to stabilize training if necessary)
-        if clip_grad_l2norm > 0.0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad_l2norm)
-        # step optimizer / scheduler
-        optimizer.step()
-        scheduler.step()
+        with accelerator.accumulate(model):
+            # zero out optim
+            optimizer.zero_grad(set_to_none=True)
+            # forward / backward the model
+            with accelerator.autocast():
+                losses = model(video_list, model_mae)
+                losses['final_loss'].backward()
+            # gradient cliping (to stabilize training if necessary)
+            if clip_grad_l2norm > 0.0:
+                accelerator.clip_grad_norm_(model.parameters(), clip_grad_l2norm)
+            # step optimizer / scheduler
+            optimizer.step()
+            scheduler.step()
 
-        if model_ema is not None:
-            model_ema.update(model)
+            if model_ema is not None:
+                model_ema.update(model)
 
-        # measure elapsed time (sync all kernels)
-        torch.cuda.synchronize()
-        batch_time.update((time.time() - start))
-        start = time.time()
+            # measure elapsed time (sync all kernels)
+            # torch.cuda.synchronize()
+            batch_time.update((time.time() - start))
+            start = time.time()
 
-        # track all losses
-        for key, value in losses.items():
-            # init meter if necessary
-            if key not in losses_tracker:
-                losses_tracker[key] = AverageMeter()
-            # update
-            losses_tracker[key].update(value.item())
+            # track all losses
+            for key, value in losses.items():
+                # init meter if necessary
+                if key not in losses_tracker:
+                    losses_tracker[key] = AverageMeter()
+                # update
+                losses_tracker[key].update(value.item())
     
     return losses_tracker['final_loss'].avg
 

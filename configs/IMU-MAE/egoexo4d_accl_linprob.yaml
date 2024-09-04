@@ -40,16 +40,16 @@ spectrogram_params: {
   }
 }
 model: {
-  name: 'vit_small_patch',
+  name: 'vit_base_patch',
   in_chans: 3,
   num_classes: 68,
-  embed_dim: 384, # ViT-S: 384, ViT-B: 768, ViT-L: 1024, ViT-H: 1280
+  embed_dim: 768, # ViT-S: 384, ViT-B: 768, ViT-L: 1024, ViT-H: 1280
   # depth: 12,
   # mask_ratio: 0.9,
   mask_2d: False,
   # mask_t_prob: 0.2,
   # mask_f_prob: 0.2,
-  # drop_path: 0.1,
+  drop_path_rate: 0.1,
   global_pool: True,
   # pretrain: False,
   use_custom_patch: False,

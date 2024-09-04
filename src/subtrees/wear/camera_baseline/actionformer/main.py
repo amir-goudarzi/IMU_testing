@@ -27,6 +27,7 @@ import gc
 
 sys.path.append(os.path.join('src'))
 from utils.wrappers import WrapperMAE
+from accelerate import Accelerator, GradScalerKwargs
 
 
 def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generator, run, args):
@@ -36,6 +37,10 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
     # re-scale learning rate / # workers based on number of GPUs
     cfg['opt']["learning_rate"] *= len(cfg['devices'])
     cfg['loader']['num_workers'] *= len(cfg['devices'])
+
+    kwargs = GradScalerKwargs()
+    accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs], log_with="wandb")
+    accelerator.init_trackers(f"{cfg['name']}", config=cfg, init_kwargs={"wandb":{"name":f"{split_name=}"}})
     
     train_dataset = make_dataset(cfg['dataset_name'], True, cfg['train_split'], **cfg['dataset'])
     val_dataset = make_dataset(cfg['dataset_name'], False, cfg['val_split'], **cfg['dataset'])
@@ -78,8 +83,10 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
 
     # model
     model = make_meta_arch(args, cfg['model']['model_name'], **cfg['model'])
-    model = nn.DataParallel(model, device_ids=cfg['devices'])
-    print("Number of learnable parameters for ActionFormer: {}".format(sum(p.numel() for p in model.parameters() if p.requires_grad)))
+
+    # TODO: old code, check if necessary
+    # model = nn.DataParallel(model, device_ids=cfg['devices'])
+    
     # optimizer
     optimizer = make_optimizer(model, cfg['opt'])
     # schedule
@@ -88,6 +95,10 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
 
     # enable model EMA
     model_ema = ModelEma(model)
+    model, model_ema, train_loader, val_loader, optimizer, scheduler = accelerator.prepare(
+        model, model_ema, train_loader, val_loader, optimizer, scheduler
+    )
+    print("Number of learnable parameters for ActionFormer: {}".format(sum(p.numel() for p in model.parameters() if p.requires_grad)))
 
     # resume from a checkpoint?
     if resume:
@@ -113,7 +124,7 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
     t_losses, v_losses= np.array([]), np.array([])
     for epoch in range(start_epoch, start_epoch + max_epochs):
         # train for one epoch
-        t_loss = train_one_epoch(train_loader, model, optimizer, scheduler, model_ema, cfg['train_cfg']['clip_grad_l2norm'], model_mae=mae_backbone)
+        t_loss = train_one_epoch(train_loader, model, optimizer, scheduler, accelerator, model_ema, cfg['train_cfg']['clip_grad_l2norm'], model_mae=mae_backbone)
 
         # save ckpt once in a while
         if (((ckpt_freq > 0) and ((epoch + 1) % ckpt_freq == 0))):
