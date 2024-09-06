@@ -17,7 +17,7 @@ dataset: {
   file_ext: .npy,
   feat_stride: 60,
   num_frames: 120,
-  input_dim: 2324,
+  input_dim: 2816,
   num_classes: 18,
   downsample_rate: 1,
   max_seq_len: 2304,

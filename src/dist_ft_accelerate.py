@@ -44,7 +44,19 @@ def main(args):
         mask_ratio = f"t{mask_ratio_t}_f{mask_ratio_f}"
     else:
         mask_ratio = args.mask_t_prob
-    accelerator.init_trackers(f"imu_{linprob}", config=config, init_kwargs={"wandb":{"name":f"{masking2d}_{mask_ratio}"}})
+
+    tags = ['imu']
+    project_name = f"imu_{linprob}"
+    if cfg['model']['omnivore_included']:
+        # project_name = f"imu_{linprob}_omnivore"
+        tags.append('omnivore')
+
+    if args.mixup > 0.0:
+        tags.append('mixup')
+    else:
+        tags.append('label_balance')
+
+    accelerator.init_trackers(project_name, config=config, init_kwargs={"wandb":{"name":f"{masking2d}_{mask_ratio}", "tags":tags}})
 
     class_labels = None
     training_priors = None
@@ -62,7 +74,9 @@ def main(args):
     load_model(args.finetune, args.eval, model)
     args.nb_classes = cfg['model']['num_classes']
     mixup_fn = None
-    mixup_fn = get_mixup(args)
+    mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
+    if mixup_active:
+        mixup_fn = get_mixup(args)
 
     # Check to choose if you want to use the SummaryWriter (Tensorboard) or not.
     # Don't use it if you want to log with wandb.
@@ -127,7 +141,6 @@ def main(args):
                     'valid_loss': 0.0,
                     'mAP': 0.0,
                     'mAUC': 0.0,
-                    'per_class_accuracy': {class_labels[i]: 0.0 for i in range(model.module.num_classes)},
                     }
                 print(f'too new to evaluate!')
             
@@ -233,14 +246,20 @@ def load_train_objs(cfg, args, training_priors=None):
 
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
     # loss_scaler = NativeScaler()
+    mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
 
     if args.use_soft:
         criterion = SoftTargetCrossEntropy() 
-    else:
+    elif mixup_active:
         if training_priors is not None:
             criterion = BCEWithLogitsLoss(weight=training_priors) # works better
         else:
             criterion = BCEWithLogitsLoss()
+    else:
+        if training_priors is not None:
+            criterion = CrossEntropyLoss(weight=training_priors)
+        else:
+            criterion = CrossEntropyLoss()
     # criterion = CrossEntropyLoss()
     # criterion = SoftTargetCrossEntropy()
     return train_loader, valid_loader, model, optimizer, criterion

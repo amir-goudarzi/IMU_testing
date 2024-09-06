@@ -17,6 +17,7 @@ import time
 import pandas as pd
 import numpy as np
 import neptune
+import wandb
 from neptune.types import File
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, ConfusionMatrixDisplay
 
@@ -26,6 +27,7 @@ from utils.os_utils import Logger, load_config
 import matplotlib.pyplot as plt
 from camera_baseline.actionformer.main import run_actionformer
 from camera_baseline.tridet.main import run_tridet
+from accelerate import Accelerator, GradScalerKwargs
 
 def main(args):
     if args.neptune:
@@ -78,17 +80,20 @@ def main(args):
         if config['name'] == 'tadtr':
             config['dataset']['json_info'] = config['info_json'][i]
 
+        seed = config['init_rand_seed']
+        kwargs = GradScalerKwargs()
+        run = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs], log_with="wandb")
+        run.init_trackers(f"{args.run_id}", config=config, init_kwargs={"wandb":{"name":f"{name}", "tags":[f'{seed=}']}})
+
         if config['name'] == 'deepconvlstm' or config['name'] == 'attendanddiscriminate':
             t_losses, v_losses, v_mAP, v_preds, v_gt = run_inertial_network(train_sbjs, val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run)
-        elif config['name'] == 'actionformer':
+        elif config['name'] == 'actionformer' or config['name'] == 'actionformer_vit_pretrained':
             t_losses, v_losses, v_mAP, v_preds, v_gt = run_actionformer(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run, args)
-        elif config['name'] == 'tridet':
-            t_losses, v_losses, v_mAP, v_preds, v_gt = run_tridet(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run)
-        elif config['name'] == 'actionformer_vit_pretrained':
-            t_losses, v_losses, v_mAP, v_preds, v_gt = run_actionformer_vit_pretrained(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run, args)
-        elif config['name'] == 'tridet_vit_pretrained':
-            t_losses, v_losses, v_mAP, v_preds, v_gt = run_tridet_vit_pretrained(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run)
+        elif config['name'] == 'tridet' or config['name'] == 'actionformer_vit_pretrained':
+            t_losses, v_losses, v_mAP, v_preds, v_gt = run_tridet(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run, args)
         
+
+        # t_losses, v_losses, v_mAP, v_preds, v_gt = run.gather_for_metrics(t_losses, v_losses, v_mAP, v_preds, v_gt)
         # raw results
         conf_mat = confusion_matrix(v_gt, v_preds, normalize='true', labels=range(len(config['labels'])))
         v_acc = conf_mat.diagonal()/conf_mat.sum(axis=1)
@@ -126,9 +131,15 @@ def main(args):
         ax.set_title('Confusion Matrix ' + name + ' (raw)')
         plt.savefig(os.path.join(log_dir, name + '_raw.png'))
         plt.close()
+        run.wait_for_everyone()
         if run is not None:
-            run['conf_matrices'].append(_, name=name + '_raw')
+            # run['conf_matrices'].append(_, name=name + '_raw')
+            run.log({'conf_matrix': wandb.Image(os.path.join(log_dir, name + '_raw.png') )})
+        run.end_training()
 
+    kwargs = GradScalerKwargs()
+    run = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs], log_with="wandb")
+    run.init_trackers(f"{args.run_id}", config=config, init_kwargs={"wandb":{"name":f"Average Statistics", "tags":[f'{seed=}']}})
     # final raw results across all splits
     conf_mat = confusion_matrix(all_v_gt, all_v_pred, normalize='true', labels=range(len(config['labels'])))
     v_acc = conf_mat.diagonal()/conf_mat.sum(axis=1)
@@ -157,17 +168,22 @@ def main(args):
     plt.savefig(os.path.join(log_dir, 'all_raw.png'))
     plt.close()
     if run is not None:
-        run['conf_matrices'].append(File(os.path.join(log_dir, 'all_raw.png')), name='all')
+        run.log({'conf_matrix': wandb.Image(os.path.join(log_dir, 'all_raw.png'))})
+    run.end_training()
 
     # submit final values to neptune 
     if run is not None:
-        run['final_avg_mAP'] = np.nanmean(all_v_mAP)
+        df = pd.DataFrame(columns=['metric', 'value'])
+        data = {
+            'final_avg_mAP': np.nanmean(all_v_mAP),
+            'final_accuracy': np.nanmean(v_acc),
+            'final_precision': np.nanmean(v_prec),
+            'final_recall': np.nanmean(v_rec),
+            'final_f1': np.nanmean(v_f1)
+            }
         for tiou, tiou_mAP in zip(config['dataset']['tiou_thresholds'], all_v_mAP.T):
-            run['final_mAP@' + str(tiou)] = (np.nanmean(tiou_mAP))
-        run['final_accuracy'] = np.nanmean(v_acc)
-        run['final_precision'] = (np.nanmean(v_prec))
-        run['final_recall'] = (np.nanmean(v_rec))
-        run['final_f1'] = (np.nanmean(v_f1))
+            data['final_mAP@' + str(tiou)] = np.nanmean(tiou_mAP)
+        run.log({'final_results': wandb.Table(data=[[key, value] for key, value in data.items()], columns=['metric', 'value'])})
 
     print("ALL FINISHED")
 

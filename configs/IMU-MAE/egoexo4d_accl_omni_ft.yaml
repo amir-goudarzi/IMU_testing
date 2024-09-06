@@ -1,0 +1,70 @@
+task_name: "imu_omnivore"
+linprob: False
+dataset_train: {
+  data_dir: '/data2/EgoExo4D',
+  annotations_file: './data/EgoExo4D/keysteps/train_takes_clean.pkl',
+  stream_labels: ["imu-left", "imu-right"],
+  sensors: ["accl"],
+  preload: True,
+  tasks_file: '/data2/EgoExo4D/annotations/keystep_train.json',
+  labels_file: './data/EgoExo4D/verbs_mapping_keystep_clean.pkl',
+  mean: ./data/EgoExo4D/mean_std/accl_mean_left.pt,
+  std: ./data/EgoExo4D/mean_std/accl_std_left.pt,
+  is_train: True,
+  freqm: 48,
+  timem: 60
+}
+dataset_valid: {
+  data_dir: '/data2/EgoExo4D',
+  annotations_file: './data/EgoExo4D/keysteps/valid_takes_clean.pkl',
+  stream_labels: ["imu-left", "imu-right"],
+  sensors: ["accl"],
+  preload: True,
+  tasks_file: '/data2/EgoExo4D/annotations/keystep_val.json',
+  labels_file: './data/EgoExo4D/verbs_mapping_keystep_clean.pkl',
+  mean: ./data/EgoExo4D/mean_std/accl_mean_left.pt,
+  std: ./data/EgoExo4D/mean_std/accl_std_left.pt,
+  is_train: False,
+}
+mean_std: {
+  save_path: None,
+}
+spectrogram_params: {
+  sec_2: {
+    128x320: {
+      downsampling_rate: 50,
+      window_size: 2,
+      n_fft: 256,
+      win_length: 24,
+      hop_length: 1,
+      sampling_rate: 50,
+      resizes: !!python/tuple [128, 320],
+      temporal_points: 160
+    }
+  }
+}
+model: {
+  name: 'vit_base_patch',
+  in_chans: 3,
+  num_classes: 68,
+  embed_dim: 768, # ViT-S: 384, ViT-B: 768, ViT-L: 1024, ViT-H: 1280
+  # depth: 12,
+  # mask_ratio: 0.9,
+  mask_2d: True,
+  # mask_t_prob: 0.2,
+  # mask_f_prob: 0.2,
+  drop_path_rate: 0.1,
+  global_pool: True,
+  # pretrain: False,
+  use_custom_patch: False,
+  # mixup: 0.5,
+  classification: True,
+  omnivore_included: True,
+  # alpha: 0.9,
+  # mode: 0,
+  # split_pos: False,
+  # pos_trainable: False,
+  128x320: {
+    patch_size: !!python/tuple [16, 16],
+  },
+}

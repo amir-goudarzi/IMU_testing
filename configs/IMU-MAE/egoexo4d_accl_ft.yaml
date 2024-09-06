@@ -59,6 +59,7 @@ model: {
   use_custom_patch: False,
   # mixup: 0.5,
   classification: True,
+  omnivore_included: False,
   # alpha: 0.9,
   # mode: 0,
   # split_pos: False,

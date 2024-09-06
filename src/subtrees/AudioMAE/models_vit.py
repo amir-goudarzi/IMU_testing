@@ -22,8 +22,9 @@ from .util.patch_embed import PatchEmbed_new, PatchEmbed3D_new
 class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
     """ Vision Transformer with support for global average pooling
     """
-    def __init__(self, global_pool=False, mask_2d=True, use_custom_patch=False, classification=True, **kwargs):
+    def __init__(self, global_pool=False, mask_2d=True, use_custom_patch=False, classification=True, omnivore_included=False, **kwargs):
         super(VisionTransformer, self).__init__(**kwargs)
+        self.omnivore_included = omnivore_included
 
         self.global_pool = global_pool
         if self.global_pool:
@@ -34,6 +35,12 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         self.mask_2d = mask_2d
         self.use_custom_patch = use_custom_patch
         self.classification = classification
+
+        if self.omnivore_included:
+            self.omni_classifier = nn.Linear(1536, self.num_classes)
+
+        if not self.classification:
+            del self.head  # remove the original head
         num_heads=12
         depth=12
         mlp_ratio=4
@@ -177,12 +184,19 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
 
     def forward(self, x, v=None, mask_t_prob=0.0, mask_f_prob=0.0):
+        if self.omnivore_included:
+            (x, vid) = x
+
         if mask_t_prob > 0.0 or mask_f_prob > 0.0:
             x = self.forward_features_mask(x, mask_t_prob=mask_t_prob, mask_f_prob=mask_f_prob)
         else:
             x = self.forward_features(x)
+
         if self.classification:
             x = self.head(x)
+            if self.omnivore_included:
+                vid = self.omni_classifier(vid)
+                x = x + vid
         return x
     
 

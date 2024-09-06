@@ -74,7 +74,13 @@ def train_one_epoch(
             # targets = targets.to(device, non_blocking=True)
 
             if mixup_fn is not None:
-                samples, targets = mixup_fn(samples, targets)
+                if type(samples) is torch.Tensor:
+                    samples, targets = mixup_fn(samples, targets)
+                else:
+                    imu, omni = samples
+                    imu, targets = mixup_fn(imu, targets)
+                    samples = (imu, omni)
+
             else:
                 targets = one_hot(targets, model.module.num_classes).to(torch.float32)
 
@@ -115,8 +121,7 @@ def train_one_epoch(
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    if accelerator.is_main_process:
-        accelerator.log({'train_loss': metric_logger.loss.global_avg, 'lr': metric_logger.lr.global_avg}, step=epoch)
+    accelerator.log({'train_loss': metric_logger.loss.global_avg, 'lr': metric_logger.lr.global_avg}, step=epoch)
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
@@ -153,13 +158,20 @@ def evaluate(
         # images = images.to(device, non_blocking=True)
         # target = target.to(device, non_blocking=True)
         # compute output
+        
+        if type(images) is list:
+            images, vid = images
+            batch_size = images.shape[0]
+            images = (images, vid)
+        else:
+            batch_size = images.shape[0]
+
         output, loss = train_forward(model, images, target, criterion, accelerator)
         output, target = accelerator.gather_for_metrics((output, target))
         
         
         # acc1, acc5 = accuracy(output, torch.argmax(target, dim=1), topk=(1, 5))
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        batch_size = images.shape[0]
         metric_logger.update(loss=loss.item())
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
         metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
@@ -230,21 +242,17 @@ def train_fn(task_name):
         raise NotImplementedError(f"Task {task_name} not implemented")
 
 # TODO: write imu_omnivore function for finetuning.
-def imu_omnivore(model, device, samples, args):
-    imu, omnivore = samples
-    imu = imu.to(device, non_blocking=True)
-    omnivore = omnivore.to(device, non_blocking=True)
-    with torch.cuda.amp.autocast():
-        emb_enc, mask, ids_restore, _ = model.forward_encoder(imu, args.mask_ratio, mask_2d=model.mask_2d)
+def imu_omnivore(model, samples, targets, criterion, autocast, mask_t_prob=0.0, mask_f_prob=0.0):
+    # samples = samples.to(device, non_blocking=True)
+    with autocast.autocast():
+        outputs = model(
+            samples,
+            mask_t_prob=mask_t_prob,
+            mask_f_prob=mask_f_prob
+        )
+        loss = criterion(outputs, targets)
 
-        omnivore = omnivore.repeat(1, emb_enc.shape[1], 1)
-        pred, _, _ = model.forward_decoder(emb_enc, ids_restore)  # [N, L, p*p*3]
-        
-        loss_a = model.forward_loss(imu, pred, mask, norm_pix_loss=model.norm_pix_loss)
-    loss_value = loss_a.item()
-    loss_total = loss_a
-    
-    return loss_value, loss_total
+    return outputs, loss
 
 
 def imu(model, samples, targets, criterion, autocast, mask_t_prob=0.0, mask_f_prob=0.0):

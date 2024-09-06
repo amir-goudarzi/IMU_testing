@@ -253,6 +253,7 @@ def modeling(
                                             stride=patch_size[0]
                                             )
     num_patches = model.patch_embed.num_patches
+    # model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim))
     model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim), requires_grad=False)
 
     return model

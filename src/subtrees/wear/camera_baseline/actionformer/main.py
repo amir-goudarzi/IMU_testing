@@ -25,12 +25,14 @@ from .libs.utils.train_utils import valid_one_epoch
 from .libs.core.config import _update_config
 import gc
 
+sys.path.append(os.path.join('../../../src'))
 sys.path.append(os.path.join('src'))
-from utils.wrappers import WrapperMAE
+from utils.wrappers import WrapperModel
 from accelerate import Accelerator, GradScalerKwargs
+from models.utils_mae import load_vit3d_model
+from utils.os_utils import load_config
 
-
-def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generator, run, args):
+def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generator, run: Accelerator, args):
     cfg = _update_config(cfg)
     split_name = cfg['dataset']['json_anno'].split('/')[-1].split('.')[0]
     mkdir_if_missing(os.path.join(ckpt_folder, 'ckpts'))
@@ -38,10 +40,6 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
     cfg['opt']["learning_rate"] *= len(cfg['devices'])
     cfg['loader']['num_workers'] *= len(cfg['devices'])
 
-    kwargs = GradScalerKwargs()
-    accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs], log_with="wandb")
-    accelerator.init_trackers(f"{cfg['name']}", config=cfg, init_kwargs={"wandb":{"name":f"{split_name=}"}})
-    
     train_dataset = make_dataset(cfg['dataset_name'], True, cfg['train_split'], **cfg['dataset'])
     val_dataset = make_dataset(cfg['dataset_name'], False, cfg['val_split'], **cfg['dataset'])
     
@@ -64,26 +62,22 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
     # set bs = 1, and disable shuffle
     val_loader = make_data_loader(val_dataset, False, None, 1, cfg['loader']['num_workers'])
 
-    mae_backbone = None
-    if args.config_mae:
-        mae_chkpt = args.finetune.split('pretrain/')
-        change = mae_chkpt[1].split('/')[0]
-        prefix = change.split('_')[0]
-        suffix = split_name.split('wear_')[1]
-        sub_split_name = f'{prefix}_{suffix}'
-        mae_chkpt = args.finetune.replace(change, sub_split_name)
-        mae_backbone = WrapperMAE(
-            config_mae=args.config_mae,
-            seconds=args.seconds,
-            matrix_type=args.matrix_type,
-            checkpoint=mae_chkpt,
-            eval=True
-        )
-        mae_backbone.to(cfg['devices'][0])
-
     # model
     model = make_meta_arch(args, cfg['model']['model_name'], **cfg['model'])
 
+    mae_backbone = None
+    model_ema = None
+    if args.config_mae:
+        cfg_mae = load_config(args.config_mae)
+        mae_backbone = load_vit3d_model(cfg_mae['dataset']['seconds'], cfg_mae['dataset']['matrix_type'], cfg_mae, args.finetune, args.eval)
+        model = WrapperModel(mae_backbone, model)
+        if run.is_main_process:
+            model_ema = ModelEma(model.model_on_top)
+            model_ema = model_ema.to(run.device)
+    else:
+        if run.is_main_process:
+            model_ema = ModelEma(model)
+            model_ema = model_ema.to(run.device)
     # TODO: old code, check if necessary
     # model = nn.DataParallel(model, device_ids=cfg['devices'])
     
@@ -93,12 +87,10 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
     num_iters_per_epoch = len(train_loader)
     scheduler = make_scheduler(optimizer, cfg['opt'], num_iters_per_epoch)
 
-    # enable model EMA
-    model_ema = ModelEma(model)
-    model, model_ema, train_loader, val_loader, optimizer, scheduler = accelerator.prepare(
-        model, model_ema, train_loader, val_loader, optimizer, scheduler
+    model, train_loader, val_loader, optimizer, scheduler = run.prepare(
+        model, train_loader, val_loader, optimizer, scheduler
     )
-    print("Number of learnable parameters for ActionFormer: {}".format(sum(p.numel() for p in model.parameters() if p.requires_grad)))
+    print("Number of learnable parameters for ActionFormer: {}".format(sum(p.numel() for p in model.module.parameters() if p.requires_grad)))
 
     # resume from a checkpoint?
     if resume:
@@ -124,8 +116,7 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
     t_losses, v_losses= np.array([]), np.array([])
     for epoch in range(start_epoch, start_epoch + max_epochs):
         # train for one epoch
-        t_loss = train_one_epoch(train_loader, model, optimizer, scheduler, accelerator, model_ema, cfg['train_cfg']['clip_grad_l2norm'], model_mae=mae_backbone)
-
+        t_loss = train_one_epoch(train_loader, model, optimizer, scheduler, run, model_ema, cfg['train_cfg']['clip_grad_l2norm'])
         # save ckpt once in a while
         if (((ckpt_freq > 0) and ((epoch + 1) % ckpt_freq == 0))):
             save_states = { 
@@ -142,7 +133,7 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
         val_db_vars = val_dataset.get_attributes()
         det_eval = ANETdetection(val_dataset.json_anno, val_dataset.split[0], tiou_thresholds = val_db_vars['tiou_thresholds'])
         
-        v_loss, v_segments = valid_one_epoch(val_loader, model, model_mae=mae_backbone)
+        v_loss, v_segments = valid_one_epoch(val_loader, model, accelerator=run)
         v_preds, v_gt, _ = convert_segments_to_samples(v_segments, val_sens_data, cfg['dataset']['sampling_rate'])
         
         if ((epoch + 1) == max_epochs):
@@ -184,10 +175,18 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
         t_losses = np.append(t_losses, t_loss)
         v_losses = np.append(v_losses, v_loss)
 
+        # if run is not None:
+        #     run[split_name].append({"train_loss": t_loss, "val_loss": v_loss, "accuracy": np.nanmean(v_acc), "precision": np.nanmean(v_prec), "recall": np.nanmean(v_rec), 'f1': np.mean(v_f1), 'mAP': np.mean(val_mAP)}, step=epoch)
+        #     for tiou, tiou_mAP in zip(cfg['dataset']['tiou_thresholds'], val_mAP):
+        #             run[split_name].append({'mAP@' + str(tiou): tiou_mAP}, step=epoch)
+        run.wait_for_everyone()
         if run is not None:
-            run[split_name].append({"train_loss": t_loss, "val_loss": v_loss, "accuracy": np.nanmean(v_acc), "precision": np.nanmean(v_prec), "recall": np.nanmean(v_rec), 'f1': np.mean(v_f1), 'mAP': np.mean(val_mAP)}, step=epoch)
+            run.log({
+                "train_loss": t_loss, "val_loss": v_loss, 
+                "accuracy": np.nanmean(v_acc), "precision": np.nanmean(v_prec), 
+                "recall": np.nanmean(v_rec), 'f1': np.mean(v_f1), 'mAP': np.mean(val_mAP)}, step=epoch)
             for tiou, tiou_mAP in zip(cfg['dataset']['tiou_thresholds'], val_mAP):
-                    run[split_name].append({'mAP@' + str(tiou): tiou_mAP}, step=epoch)
+                run.log({'mAP@' + str(tiou): tiou_mAP}, step=epoch)
         del det_eval
         gc.collect()
     del model, model_ema, optimizer, scheduler, train_loader, val_loader, train_dataset, val_dataset, val_sens_data, mae_backbone

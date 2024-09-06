@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
 import seaborn as sns
 
-from utils import majorityVoting, ANETdetection, convert_samples_to_segments
+from .utils import majorityVoting, ANETdetection, convert_samples_to_segments
 
 # postprocessing parameters
 path_to_preds = ['path/to/preds/to/be/analysed']

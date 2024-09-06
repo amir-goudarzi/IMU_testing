@@ -133,7 +133,7 @@ class EgoExo4D(Dataset):
         def get_combined(take):
             imu = self.__get_imu__(take)
             spectrogram = self.transforms(imu)
-            omnivore = self.__get_omnivore__(take)
+            omnivore = self.__get_omnivore__(take).squeeze(0)
             return spectrogram, omnivore
         
         if self.task_name == "imu":
