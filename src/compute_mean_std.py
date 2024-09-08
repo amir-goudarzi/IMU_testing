@@ -97,17 +97,27 @@ def main(args, matrix_type='64x64', seconds=2):
     #     resizes=spectrogram_cfg['resizes']
     # )
 
-    accl_stats = {
-        'psum': torch.zeros(3),
-        'psum_sq': torch.zeros(3),
-        'count': 0
-    }
+    if args.dataset == 'egoexo4d':
+        accl_stats = {
+            'psum': torch.zeros(3),
+            'psum_sq': torch.zeros(3),
+            'count': 0
+        }
+    elif args.dataset == 'wear':
+        accl_stats = {
+            'psum': torch.zeros(12),
+            'psum_sq': torch.zeros(12),
+            'count': 0
+        }
 
     cfg = load_config(args.config)
     # config['device'] = rank
+    if args.dataset == 'wear':
+        cfg['dataset']['filename'] = args.split_file
+
     dataset = make_dataset(
         name=args.dataset,
-        is_pretrain=True,
+        is_pretrain=False,
         task_name = cfg['task_name'],
         **cfg['dataset'],
         **cfg['spectrogram_params'][f'sec_{seconds}'][matrix_type]
@@ -119,7 +129,7 @@ def main(args, matrix_type='64x64', seconds=2):
     channels_sum, channels_squared_sum, num_batches = 0, 0, 0
     accl_tot = None
     # for i, data in enumerate(dataloader):
-    for i, data  in enumerate(dataloader):
+    for i, (data, labels)  in enumerate(dataloader):
         print(f'{i}/{dataset_len//batch_size}')
         accl = data.to(DEVICE)
         # if accl_tot is None:
@@ -162,19 +172,26 @@ def main(args, matrix_type='64x64', seconds=2):
     print(f'{accl_mean=}, {accl_std=}')
 
     # save_path = config['mean_std']['save_path']
-    if not os.path.exists(args.save_path):
-        os.makedirs(args.save_path)
+    split = args.split_file.split('_')[-1].split('.')[0]
+    save_path = os.path.join(args.save_path, f'split_{split}')
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
 
-    torch.save(accl_mean, os.path.join(args.save_path, f'accl_mean_left.pt'))
-    torch.save(accl_std, os.path.join(args.save_path, f'accl_std_left.pt'))
+    if args.dataset == 'egoexo4d':
+        torch.save(accl_mean, os.path.join(args.save_path, f'accl_mean_left.pt'))
+        torch.save(accl_std, os.path.join(args.save_path, f'accl_std_left.pt'))
+    elif args.dataset == 'wear':
+        torch.save(accl_mean, os.path.join(save_path, f'accl_mean.pt'))
+        torch.save(accl_std, os.path.join(args.save_path, f'split_{split}', f'accl_std.pt'))
     # print(f'{gyro_mean=}, {gyro_std=}')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Compute mean and std for the dataset')
-    parser.add_argument('--config', default='./configs/IMU-MAE/spectrograms_wear.yaml')
+    parser.add_argument('--config', default='./configs/IMU-MAE/wear_inertial_ft.yaml')
     parser.add_argument('--dataset', default='wear')
-    parser.add_argument('--save_path', default='./data/mean_std')
+    parser.add_argument('--split_file', default='wear_split_1.pkl')
+    parser.add_argument('--save_path', default='./data/WEAR/mean_std')
     args = parser.parse_args()
     matrix_type = '128x320'
     seconds = 2

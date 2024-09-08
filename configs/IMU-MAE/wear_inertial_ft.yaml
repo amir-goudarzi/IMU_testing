@@ -1,0 +1,57 @@
+task_name: "imu"
+dataset: "wear"
+mean_std: {
+  save_path: None,
+}
+
+dataset: {
+  src_dir: "/data2/WEAR",
+  annotations: "./data/WEAR/annotations/crossval_refactored",
+}
+
+mean_std_path: [
+  'data/WEAR/mean_std/split_1',
+  'data/WEAR/mean_std/split_2',
+  'data/WEAR/mean_std/split_3',
+]
+
+spectrogram_params: {
+  sec_2: {
+    128x320: {
+      downsampling_rate: 50,
+      window_size: 2,
+      n_fft: 256,
+      win_length: 24,
+      hop_length: 1,
+      sampling_rate: 50,
+      resizes: !!python/tuple [128, 320],
+      temporal_points: 160,
+      transforms: null,
+      is_train: True, #Determines if to use SpecAugment
+    }
+  }
+}
+model: {
+  name: 'vit_base_patch',
+  in_chans: 3,
+  num_classes: 68, # Not important for feature extraction, can be arbitrary
+  embed_dim: 768, # ViT-S: 384, ViT-B: 768, ViT-L: 1024, ViT-H: 1280
+  # depth: 12,
+  # mask_ratio: 0.9,
+  mask_2d: True,
+  # mask_t_prob: 0.2,
+  # mask_f_prob: 0.2,
+  drop_path_rate: 0.1,
+  global_pool: True,
+  # pretrain: False,
+  use_custom_patch: False,
+  classification: False,
+  omnivore_included: False,
+  # alpha: 0.9,
+  # mode: 0,
+  # split_pos: False,
+  # pos_trainable: False,
+  128x320: {
+    patch_size: !!python/tuple [1, 16, 16],
+  },
+}

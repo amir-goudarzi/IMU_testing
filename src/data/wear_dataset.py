@@ -23,13 +23,17 @@ class WearDataset(Dataset):
             overlap_in_s=None,
             cache_size=math.inf,
             n_fft=128,
+            win_length=128,
             hop_length=4,
             sampling_rate=50,
             downsampling_rate=25,
+            temporal_points=160,
             use_cache=False,
             transforms=None,
             num_classes=18,
-            resizes=(64, 64)
+            resizes=(64, 64),
+            task_name=None,
+            is_train=False
             ):
         self.src_dir = src_dir
         self.window_size = window_size
@@ -45,11 +49,14 @@ class WearDataset(Dataset):
             window_size=window_size,
             overlap_in_s=overlap_in_s,
             n_fft=n_fft,
+            win_length=win_length,
             hop_length=hop_length,
+            temporal_points=temporal_points,
             sampling_rate=sampling_rate,
             downsampling_rate=downsampling_rate,
             transforms=transforms,
-            resizes=resizes
+            resizes=resizes,
+            is_train=is_train
         )
 
         

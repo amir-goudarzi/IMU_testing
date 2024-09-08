@@ -21,7 +21,7 @@ def load_vit3d_model(seconds,
 
     specgram_cfg = cfg['spectrogram_params'][f'sec_{seconds}'][matrix_type]
     model_dict = {attr: getattr(models_vit, attr) for attr in dir(models_vit)}
-    model_name = cfg['model']['name'] + str(cfg['model'][matrix_type]['patch_size'][0])
+    model_name = cfg['model']['name'] + str(cfg['model'][matrix_type]['patch_size'][1])
     img_size = specgram_cfg['resizes']
     patch_size = cfg['model'][matrix_type]['patch_size']
     in_chans = cfg['model']['in_chans']

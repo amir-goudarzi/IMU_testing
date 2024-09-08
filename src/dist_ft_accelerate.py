@@ -56,6 +56,9 @@ def main(args):
     else:
         tags.append('label_balance')
 
+    if not args.finetune:
+        tags.append('from_scratch')
+
     accelerator.init_trackers(project_name, config=config, init_kwargs={"wandb":{"name":f"{masking2d}_{mask_ratio}", "tags":tags}})
 
     class_labels = None

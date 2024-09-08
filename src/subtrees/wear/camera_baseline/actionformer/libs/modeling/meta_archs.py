@@ -341,9 +341,12 @@ class PtTransformer(nn.Module):
         # will throw an error if parameters are on different devices
         return list(set(p.device for p in self.parameters()))[0]
 
-    def forward(self, video_list):
+    def forward(self, video_list, need_preprocess=True):
         # batch the video list into feats (B, C, T) and masks (B, 1, T)
-        batched_inputs, batched_masks = self.preprocessing(video_list)
+        if need_preprocess:
+            batched_inputs, batched_masks = self.preprocessing(video_list)
+        else:
+            batched_inputs, batched_masks = video_list
             
         # forward the network (backbone -> neck -> heads)
         feats, masks = self.backbone(batched_inputs, batched_masks)

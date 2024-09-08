@@ -21,6 +21,8 @@ import wandb
 from neptune.types import File
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, ConfusionMatrixDisplay
 
+import torch
+
 from inertial_baseline.train import run_inertial_network
 from utils.torch_utils import fix_random_seed
 from utils.os_utils import Logger, load_config
@@ -61,7 +63,7 @@ def main(args):
     all_v_pred = np.array([])
     all_v_gt = np.array([])
     all_v_mAP = np.empty((0, len(config['dataset']['tiou_thresholds'])))
-        
+
     for i, anno_split in enumerate(config['anno_json']):
         with open(anno_split) as f:
             file = json.load(f)
@@ -82,15 +84,15 @@ def main(args):
 
         seed = config['init_rand_seed']
         kwargs = GradScalerKwargs()
-        run = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs], log_with="wandb")
+        run = Accelerator(mixed_precision="bf16", kwargs_handlers=[kwargs], log_with="wandb")
         run.init_trackers(f"{args.run_id}", config=config, init_kwargs={"wandb":{"name":f"{name}", "tags":[f'{seed=}']}})
 
         if config['name'] == 'deepconvlstm' or config['name'] == 'attendanddiscriminate':
             t_losses, v_losses, v_mAP, v_preds, v_gt = run_inertial_network(train_sbjs, val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run)
         elif config['name'] == 'actionformer' or config['name'] == 'actionformer_vit_pretrained':
-            t_losses, v_losses, v_mAP, v_preds, v_gt = run_actionformer(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run, args)
+            t_losses, v_losses, v_mAP, v_preds, v_gt = run_actionformer(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run, args, split=i)
         elif config['name'] == 'tridet' or config['name'] == 'actionformer_vit_pretrained':
-            t_losses, v_losses, v_mAP, v_preds, v_gt = run_tridet(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run, args)
+            t_losses, v_losses, v_mAP, v_preds, v_gt = run_tridet(val_sbjs, config, log_dir, args.ckpt_freq, args.resume, rng_generator, run, args, split=i)
         
 
         # t_losses, v_losses, v_mAP, v_preds, v_gt = run.gather_for_metrics(t_losses, v_losses, v_mAP, v_preds, v_gt)
@@ -208,7 +210,9 @@ if __name__ == '__main__':
     parser.add_argument('--use_custom_patch', type=bool, default=False, help='use custom patch with overlapping and override timm PatchEmbed')
     parser.add_argument('--eval', action='store_true',
                     help='Perform evaluation only')
-
+    parser.add_argument('--mask_t_prob', default=0.0, type=float, help='T masking ratio (percentage of removed patches).') #  
+    parser.add_argument('--mask_f_prob', default=0.0, type=float, help='F masking ratio (percentage of removed patches).') #  
+    parser.add_argument('--batch_size', default=64, type=int, help='Batch size.')
     parser.set_defaults(audio_exp=True)
     args = parser.parse_args()
     main(args)  

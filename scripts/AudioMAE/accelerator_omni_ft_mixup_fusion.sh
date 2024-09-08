@@ -11,7 +11,7 @@ MASTER_PORT=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
 pretrain_mask_ratio=0.9
 
 # for mask_ratio in 0.1 0.2 0.3 0.4
-for mask_ratio in 0.4
+for mask_ratio in 0.3
 do
     accelerate launch --main_process_port $MASTER_PORT src/dist_ft_accelerate.py \
         --log_dir $experiments_dir/mask_ratio{$mask_ratio}_$model \

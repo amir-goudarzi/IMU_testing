@@ -2,22 +2,20 @@
 
 dataset=egoexo4d
 matrix_type="128x320"
-experiments_dir=./reports/experiments/audio_mae/$matrix_type/$dataset/finetuning/label_balance
+experiments_dir=./reports/experiments/audio_mae/$matrix_type/$dataset/imu_omni/fromscratch
 patch=16
 model=vit_base_patch$patch
 nodes=1
 gpus_per_node=2
 MASTER_PORT=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
-pretrain_mask_ratio=0.9
 
 # for mask_ratio in 0.1 0.2 0.3 0.4
-for mask_ratio in 0.4
+for mask_ratio in 0.3
 do
     accelerate launch --main_process_port $MASTER_PORT src/dist_ft_accelerate.py \
         --log_dir $experiments_dir/mask_ratio{$mask_ratio}_$model \
         --output_dir $experiments_dir/mask_ratio{$mask_ratio}_$model \
-        --config ./configs/IMU-MAE/egoexo4d_accl_ft.yaml \
-        --finetune ./reports/experiments/audio_mae/128x320/egoexo4d/pretrain/mask_ratio{$pretrain_mask_ratio}_mae_$model/accelerator_state \
+        --config ./configs/IMU-MAE/egoexo4d_accl_omni_ft.yaml \
         --model $model \
         --epochs 30 \
         --blr 2e-4 \

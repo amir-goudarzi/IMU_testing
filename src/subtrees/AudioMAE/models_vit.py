@@ -120,8 +120,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             #T=32
             #F=8            
             ## for SPC & EPIC
-            T = self.patch_embed.img_size[1] // self.patch_embed.patch_size[1]
-            F = self.patch_embed.img_size[0] // self.patch_embed.patch_size[0]
+            T = self.patch_embed.img_size[-2] // self.patch_embed.patch_size[-2]
+            F = self.patch_embed.img_size[-1] // self.patch_embed.patch_size[-1]
 
         
         # mask T

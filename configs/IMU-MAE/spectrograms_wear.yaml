@@ -11,30 +11,6 @@ mean_std: {
 }
 spectrogram_params: {
   sec_2: {
-    64x64: {
-        downsampling_rate: 50,
-        window_size: 2,
-        overlap_in_s: 1,
-        n_fft: 128,
-        hop_length: 2,
-        resizes: !!python/tuple [64, 64]
-      },
-    32x64: {
-      downsampling_rate: 50,
-      window_size: 2,
-      overlap_in_s: 1,
-      n_fft: 64,
-      hop_length: 2,
-      resizes: !!python/tuple [32, 64]
-    },
-    16x64: {
-        downsampling_rate: 50,
-        window_size: 2,
-        overlap_in_s: 1,
-        n_fft: 32,
-        hop_length: 2,
-        resizes: !!python/tuple [16, 64]
-    },
     128x320: {
       downsampling_rate: 50,
       window_size: 2,

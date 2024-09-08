@@ -1,4 +1,4 @@
-import os
+import os, sys
 import time
 
 from copy import deepcopy
@@ -10,7 +10,9 @@ import torch.backends.cudnn as cudnn
 from .lr_schedulers import LinearWarmupMultiStepLR, LinearWarmupCosineAnnealingLR
 from ..modeling import MaskedConv1D, Scale, AffineDropPath, LayerNorm
 from accelerate import Accelerator
-
+# sys.path.append(os.path.join('../../../src'))
+# sys.path.append(os.path.join('src'))
+# from utils.wrappers import SpectrogramsWEAR
 
 ################################################################################
 def save_checkpoint(state, is_best, file_folder, file_name='checkpoint.pth.tar'):
@@ -62,6 +64,9 @@ def make_optimizer(model, optimizer_config):
             elif pn.endswith('rel_pe'):
                 # corner case for relative position encoding
                 no_decay.add(fpn)
+            elif pn.startswith('vit_backbone'):
+                # corner case for vision transformer
+                decay.add(fpn)
 
     # validate that we considered every parameter
     param_dict = {pn: p for pn, p in model.named_parameters()}
@@ -216,7 +221,7 @@ class ModelEma(torch.nn.Module):
 
 
 ################################################################################
-def train_one_epoch(train_loader, model, optimizer: optim, scheduler, accelerator: Accelerator,  model_ema = None, clip_grad_l2norm = -1):
+def train_one_epoch(train_loader, model, optimizer: optim, scheduler, accelerator: Accelerator,  args, cfg_mae, model_ema = None, clip_grad_l2norm = -1):
     """Training the model for one epoch"""
     # set up meters
     batch_time = AverageMeter()
@@ -225,16 +230,33 @@ def train_one_epoch(train_loader, model, optimizer: optim, scheduler, accelerato
     num_iters = len(train_loader)
     # switch to train mode
     model.train()
-            
+    
+    specgram_fn = None
+    # if args.config_mae:
+        # specgram_fn = SpectrogramsWEAR(
+        #     training=True,
+        #     max_seq_len=model.module.model_on_top.max_seq_len,
+        #     cfg=cfg_mae,
+        #     args=args,
+        #     max_div_factor=model.module.model_on_top.max_div_factor,
+        #     device=accelerator.device
+        # )
     # main training loop
     start = time.time()
     for iter_idx, video_list in enumerate(train_loader, 0):
+        if specgram_fn is not None:
+            video_list = specgram_fn(video_list)
+            
+
         with accelerator.accumulate(model):
             # zero out optim
             optimizer.zero_grad(set_to_none=True)
             # forward / backward the model
             with accelerator.autocast():
-                losses = model(video_list)
+                if specgram_fn is None:
+                    losses = model(video_list)
+                else:
+                    losses = model(video_list, specgram_fn)
                 accelerator.backward(losses['final_loss'])
                 # losses['final_loss'].backward()
             # gradient cliping (to stabilize training if necessary)
