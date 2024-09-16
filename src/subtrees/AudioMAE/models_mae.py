@@ -19,20 +19,23 @@ import torch.nn as nn
 from timm.models.vision_transformer import Block
 from .util.pos_embed import get_2d_sincos_pos_embed, get_2d_sincos_pos_embed_flexible, get_1d_sincos_pos_embed_from_grid
 from .util.misc import concat_all_gather
-from .util.patch_embed import PatchEmbed_new, PatchEmbed_org
+from .util.patch_embed import PatchEmbed_new, PatchEmbed_org, PatchEmbed3D_new
 from timm.models.swin_transformer import SwinTransformerBlock
+# from torchvision.models.video.swin_transformer import ShiftedWindowAttention3d
+# from torchvision.models.video.swin_transformer import SwinTransformerBlock
 
 class MaskedAutoencoderViT(nn.Module):
     """ Masked Autoencoder with VisionTransformer backbone
     """
-    def __init__(self, img_size: int | tuple[int, int], patch_size=16, stride=10, in_chans=3,
+    def __init__(self, img_size: int | tuple[int, int] | tuple[int, int, int], patch_size=16, stride=10, in_chans=3,
                  embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
                  mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False, 
                  audio_exp=False, alpha=0.0, temperature=.2, mode=0, contextual_depth=8,
                  use_custom_patch=False, split_pos=False, pos_trainable=False, use_nce=False, beta=4.0, decoder_mode=0,
                  mask_t_prob=0.6, mask_f_prob=0.5, mask_2d=False,
-                 epoch=0, no_shift=False, contains_omni=True,
+                 epoch=0, no_shift=False, contains_omni=False,
+                 extract_feats=False
                  ):
         super().__init__()
 
@@ -40,15 +43,30 @@ class MaskedAutoencoderViT(nn.Module):
         self.audio_exp=audio_exp
         self.embed_dim = embed_dim
         self.decoder_embed_dim = decoder_embed_dim
+        
         # --------------------------------------------------------------------------
         # MAE encoder specifics
-        if use_custom_patch:
+        self.img_size = img_size
+
+        if len(img_size) > 2:
+            vid, h, w = img_size
+            self.patch_embed = PatchEmbed3D_new(video_size=img_size,
+                                        patch_size=(1, patch_size, patch_size),
+                                        in_chans=in_chans,
+                                        embed_dim=self.embed_dim,
+                                        stride=(1, patch_size, patch_size)
+                                        )
+            num_patches = self.patch_embed.num_patches
+            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+        elif use_custom_patch:
             print(f'Use custom patch_emb with patch size: {patch_size}, stride: {stride}')
             self.patch_embed = PatchEmbed_new(img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim, stride=stride)
         else:
             self.patch_embed = PatchEmbed_org(img_size, patch_size, in_chans, embed_dim)
         self.use_custom_patch = use_custom_patch
         num_patches = self.patch_embed.num_patches
+
+        self.mlp_ratio = mlp_ratio
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
@@ -78,41 +96,15 @@ class MaskedAutoencoderViT(nn.Module):
 
 
         self.decoder_mode = decoder_mode
-        if self.use_custom_patch: # overlapped patches as in AST. Similar performance yet compute heavy
-            window_size= (6,6)
-            feat_size = (102,12)
-        else:
-            window_size= (4,4)
-            feat_size = self.patch_embed.patch_hw          
+             
         if self.decoder_mode == 1:
-            decoder_modules = []
-            for index in range(16):
-                if self.no_shift:
-                    shift_size = (0,0)
-                else:
-                    if (index % 2) == 0:
-                        shift_size = (0,0)
-                    else:
-                        shift_size = (2,0)
-                    #shift_size = tuple([0 if ((index % 2) == 0) else w // 2 for w in window_size])
-                decoder_modules.append(
-                    SwinTransformerBlock(
-                        dim=decoder_embed_dim,
-                        # input_resolution=64,
-                        feat_size=feat_size,
-                        num_heads=16,
-                        window_size=window_size,
-                        shift_size=shift_size,
-                        mlp_ratio=mlp_ratio,
-                        drop=0.0,
-                        # attn_drop=0.0,
-                        drop_attn=0.0,
-                        drop_path=0.0,
-                        extra_norm=False,
-                        sequential_attn=False,
-                        norm_layer=norm_layer, #nn.LayerNorm,
-                    )
-                )
+            # Swin Transformer
+            if len(img_size) > 2:
+
+                decoder_modules = self.init_swin_transformer_3d(decoder_embed_dim, norm_layer)
+            else:
+                decoder_modules = self.init_swin_transformer_2d(decoder_embed_dim, norm_layer)
+
             self.decoder_blocks = nn.ModuleList(decoder_modules)        
         else:
             # Transfomer
@@ -144,6 +136,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.mask_2d=mask_2d
 
         self.epoch = epoch
+        self.extract_feats = extract_feats
 
         self.initialize_weights()
 
@@ -185,6 +178,74 @@ class MaskedAutoencoderViT(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
+    def init_swin_transformer_2d(self, decoder_embed_dim, norm_layer):
+        decoder_modules = []
+        window_size= (4,4)
+        feat_size = self.patch_embed.patch_hw
+        for index in range(16):
+            if self.no_shift:
+                shift_size = (0,0)
+            else:
+                if (index % 2) == 0:
+                    shift_size = (0,0)
+                else:
+                    shift_size = (2,0)
+                #shift_size = tuple([0 if ((index % 2) == 0) else w // 2 for w in window_size])
+            decoder_modules.append(
+                SwinTransformerBlock(
+                    dim=decoder_embed_dim,
+                    # input_resolution=64,
+                    feat_size=feat_size,
+                    num_heads=16,
+                    window_size=window_size,
+                    shift_size=shift_size,
+                    mlp_ratio=self.mlp_ratio,
+                    drop=0.0,
+                    # attn_drop=0.0,
+                    drop_attn=0.0,
+                    drop_path=0.0,
+                    extra_norm=False,
+                    sequential_attn=False,
+                    norm_layer=norm_layer, #nn.LayerNorm,
+                )
+            )
+        return decoder_modules
+
+    def init_swin_transformer_3d(self, decoder_embed_dim, norm_layer):
+        decoder_modules = []
+        window_size= [1, 4, 4]
+        feat_size = self.patch_embed.patch_hw
+        for index in range(16):
+            if self.no_shift:
+                shift_size = [1, 0, 0]
+            else:
+                if (index % 2) == 0:
+                    shift_size = [0, 0, 0]
+                else:
+                    shift_size = [0, 2, 0]
+                #shift_size = tuple([0 if ((index % 2) == 0) else w // 2 for w in window_size])
+            decoder_modules.append(
+                SwinTransformerBlock(
+                    dim=decoder_embed_dim,
+                    # input_resolution=64,
+                    # feat_size=feat_size,
+                    num_heads=16,
+                    window_size=window_size,
+                    shift_size=shift_size,
+                    mlp_ratio=self.mlp_ratio,
+                    dropout=0.0,
+                    # attn_drop=0.0,
+                    attention_dropout=0.0,
+                    stochastic_depth_prob=0.0,
+                    # extra_norm=False,
+                    # sequential_attn=False,
+                    norm_layer=norm_layer, #nn.LayerNorm,
+                    attn_layer=ShiftedWindowAttention3d
+                )
+            )
+        return decoder_modules
+
+
     def patchify(self, imgs):
         """
         imgs: (N, 3, H, W)
@@ -211,6 +272,13 @@ class MaskedAutoencoderViT(nn.Module):
                 x = imgs.reshape(shape=(N, C, h, p, w, p))
                 x = torch.einsum('nchpwq->nhwpqc', x)
                 x = x.reshape(shape=(N, h * w, p**2 * C))
+        elif len(self.img_size) > 2:
+            t, h, w = self.patch_embed.patch_thw
+            p = self.patch_embed.patch_size[1]
+            N, C = imgs.shape[:2]
+            x = imgs.reshape(shape=(N, C, t, h, p, w, p))
+            x = torch.einsum('ncthpwq->nthwpqc', x)
+            x = x.reshape(shape=(N, t * h * w, p**2 * C))
         else:
             h = imgs.shape[2] // p
             w = imgs.shape[3] // p
@@ -260,8 +328,33 @@ class MaskedAutoencoderViT(nn.Module):
         mask[:, :len_keep] = 0
         # unshuffle to get the binary mask
         mask = torch.gather(mask, dim=1, index=ids_restore)
-
+    
         return x_masked, mask, ids_restore
+    
+    def random_masking_3d(self, x, mask_ratio):
+        N, L, D = x.shape  # batch, length, dim
+        t, h, w = self.patch_embed.patch_thw
+        x = x.reshape(N, t, h*w, D)
+        len_keep = int(h*w * (1 - mask_ratio))
+
+        noise = torch.rand(N, t, h*w, device=x.device)  # noise in [0, 1]
+        ids_shuffle = torch.argsort(noise, dim=2)  # ascend: small is keep, large is remove
+        ids_restore = torch.argsort(ids_shuffle, dim=2)
+
+        ids_keep = ids_shuffle[:, :, :len_keep]
+        x_masked = torch.gather(x, dim=2, index=ids_keep.unsqueeze(-1).repeat(1, 1, 1, D))
+
+        mask = torch.ones([N, t, h*w], device=x.device)
+        mask[:, :, :len_keep] = 0
+        mask = torch.gather(mask, dim=2, index=ids_restore)
+        
+        mask = mask.reshape(N, -1)
+        ids_restore = ids_restore.reshape(N, -1)
+        x_masked = x_masked.reshape(N, -1, D)
+        
+        return x_masked, mask, ids_restore
+
+
 
     def random_masking_2d(self, x, mask_t_prob, mask_f_prob):
         """
@@ -329,7 +422,10 @@ class MaskedAutoencoderViT(nn.Module):
         if mask_2d:
             x, mask, ids_restore = self.random_masking_2d(x, mask_t_prob=self.mask_t_prob, mask_f_prob=self.mask_f_prob)
         else:
-            x, mask, ids_restore = self.random_masking(x, mask_ratio)
+            if len(self.img_size) > 2:
+                x, mask, ids_restore = self.random_masking_3d(x, mask_ratio)
+            else:
+                x, mask, ids_restore = self.random_masking(x, mask_ratio)
 
         # append cls token
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
@@ -393,9 +489,18 @@ class MaskedAutoencoderViT(nn.Module):
         if self.decoder_mode > 3: # mvit
             x = self.decoder_blocks(x)
         else:
-            # apply Transformer blocks
-            for blk in self.decoder_blocks:
-                x = blk(x)
+            if len(self.img_size) == 3:
+                T, _, _ = self.img_size
+                _, H, W = self.patch_embed.patch_thw
+                x = x.reshape(B, T, H, W, D)
+                for blk in self.decoder_blocks:
+                    x = blk(x)
+                    # torch.cuda.empty_cache()
+                x = x.reshape(B, T*H*W, D)
+            else:
+                # apply Transformer blocks
+                for blk in self.decoder_blocks:
+                    x = blk(x)
         x = self.decoder_norm(x)
 
         # predictor projection
@@ -439,6 +544,8 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward_mask_default(self, imgs: torch.Tensor, mask_ratio=0.8):
         emb_enc, mask, ids_restore, _ = self.forward_encoder(imgs, mask_ratio, mask_2d=self.mask_2d)
+        if self.extract_feats:
+            return emb_enc[:, 1:, :], _, _, _
         pred, _, _ = self.forward_decoder(emb_enc, ids_restore)  # [N, L, p*p*3]
         loss_recon = self.forward_loss(imgs, pred, mask, norm_pix_loss=self.norm_pix_loss)
         loss_contrastive = torch.FloatTensor([0.0]).cuda()
@@ -447,7 +554,7 @@ class MaskedAutoencoderViT(nn.Module):
     def forward_mask_omni(self, imgs: torch.Tensor, mask_ratio=0.8):
         imgs, omni = imgs
         emb_enc, mask, ids_restore, _ = self.forward_encoder(imgs, mask_ratio, mask_2d=self.mask_2d)
-        omni = omni.repeat(1, emb_enc.shape[1], 1)
+        omni = omni.unsqueeze(1).repeat(1, emb_enc.shape[1], 1)
         emb_enc = torch.cat((emb_enc, omni), dim=-1)
         pred, _, _ = self.forward_decoder(emb_enc, ids_restore)  # [N, L, p*p*3]
         loss_recon = self.forward_loss(imgs, pred, mask, norm_pix_loss=self.norm_pix_loss)

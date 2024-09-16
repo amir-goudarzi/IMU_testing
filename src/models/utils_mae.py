@@ -8,19 +8,17 @@ import numpy as np
 
 from subtrees.AudioMAE.util.patch_embed import PatchEmbed3D_new
 from audiomae_ft import modeling, load_model
-import subtrees.AudioMAE.models_vit as models_vit
+import subtrees.AudioMAE.models_mae as models_mae
 
 def load_vit3d_model(seconds,
         matrix_type,
-        cfg,
-        finetune,
-        eval):
+        cfg):
     '''
     function to load the 3D Vision Transformer model
     '''
 
     specgram_cfg = cfg['spectrogram_params'][f'sec_{seconds}'][matrix_type]
-    model_dict = {attr: getattr(models_vit, attr) for attr in dir(models_vit)}
+    model_dict = {attr: getattr(models_mae, attr) for attr in dir(models_mae)}
     model_name = cfg['model']['name'] + str(cfg['model'][matrix_type]['patch_size'][1])
     img_size = specgram_cfg['resizes']
     patch_size = cfg['model'][matrix_type]['patch_size']
@@ -34,17 +32,7 @@ def load_vit3d_model(seconds,
     del cfg['model']['embed_dim']
 
     # model = model_dict[model_name]( **cfg['dataset_train'], **cfg['model'] )
-    model = model_dict[model_name]( **cfg['model'] )
-
-
-    model.patch_embed = PatchEmbed3D_new(video_size=video_size,
-                                            patch_size=patch_size,
-                                            in_chans=in_chans,
-                                            embed_dim=emb_dim,
-                                            stride=stride
-                                            )
-    num_patches = model.patch_embed.num_patches
-    model.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, emb_dim))
+    model = model_dict[model_name]( img_size=video_size, **cfg['model'] )
 
     return model
 
@@ -55,26 +43,55 @@ def load_mae_model(finetune, eval, model):
     state_dict = model.state_dict()
 
     patchembed3d = checkpoint_model['patch_embed.proj.weight']
-    checkpoint_model['patch_embed.proj.weight'] = patchembed3d.unsqueeze(2).repeat(1,1,4,1,1)
+    checkpoint_model['patch_embed.proj.weight'] = patchembed3d.unsqueeze(2)
+    # checkpoint_model['patch_embed.proj.weight'] = patchembed3d.unsqueeze(2).repeat(1,1,4,1,1)
+  
+    checkpoint_model['pos_embed'] = tile_positional_embeddings(checkpoint_model['pos_embed'][0][1:], model.patch_embed.num_patches)
+    checkpoint_model['pos_embed'] = torch.cat((checkpoint_model['cls_token'], checkpoint_model['pos_embed']), dim=1)
 
-    checkpoint_model['pos_embed'] = tile_positional_embeddings(checkpoint_model['pos_embed'][0], state_dict.patch_embed.num_patches + 1)
+    decoder_cls_token = checkpoint_model['decoder_pos_embed'][:, :1, :]
+    checkpoint_model['decoder_pos_embed'] = tile_positional_embeddings(checkpoint_model['decoder_pos_embed'][0][1:], model.decoder_pos_embed.shape[1]-1)
+    checkpoint_model['decoder_pos_embed'] = torch.cat((decoder_cls_token, checkpoint_model['decoder_pos_embed']), dim=1)
 
-
-    if not eval:
-        for k in ['head.weight', 'head.bias']:
-            if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-                print(f"Removing key {k} from pretrained checkpoint")
-                del checkpoint_model[k]
+    del checkpoint_model['decoder_embed.weight'], checkpoint_model['decoder_embed.bias']
 
     # load pre-trained model
     msg = model.load_state_dict(checkpoint_model, strict=False)
+    model.decoder_embed.apply(model._init_weights)
     print(msg)
 
-    # manually initialize fc layer
-    if not eval:
-        trunc_normal_(model.head.weight, std=2e-5)
+    # # manually initialize fc layer
+    # if not eval:
+    #     trunc_normal_(model.head.weight, std=2e-5)
     
     return model
+
+def load_mae_model_2d(finetune, eval, model):
+    # accelerator.load_state(finetune)
+    checkpoint_model = load_file(os.path.join(finetune, 'model.safetensors'))
+    print("Load pre-trained checkpoint from: %s" % finetune)
+    state_dict = model.state_dict()
+
+    patchembed3d = checkpoint_model['patch_embed.proj.weight']
+    checkpoint_model['patch_embed.proj.weight'] = checkpoint_model['patch_embed.proj.weight'].repeat(1, 4, 1, 1)
+    # checkpoint_model['patch_embed.proj.weight'] = patchembed3d.unsqueeze(2).repeat(1,1,4,1,1)
+
+    # load pre-trained model
+    del checkpoint_model['decoder_embed.weight'], checkpoint_model['decoder_embed.bias']
+
+    checkpoint_model['decoder_pred.weight'] = checkpoint_model['decoder_pred.weight'].repeat(4, 1)
+    checkpoint_model['decoder_pred.bias'] = checkpoint_model['decoder_pred.bias'].repeat(4)
+    # load pre-trained model
+    msg = model.load_state_dict(checkpoint_model, strict=False)
+    model.decoder_embed.apply(model._init_weights)
+
+    # # manually initialize fc layer
+    # if not eval:
+    #     trunc_normal_(model.head.weight, std=2e-5)
+    
+    return model
+
+
 
 def tile_positional_embeddings(restored_posemb_grid, n_tokens):
   """
@@ -95,4 +112,4 @@ def tile_positional_embeddings(restored_posemb_grid, n_tokens):
       [restored_posemb_grid] * num_repeats, axis=0)
   restored_posemb_grid = np.expand_dims(restored_posemb_grid, axis=0)
 
-  return restored_posemb_grid
+  return torch.tensor(restored_posemb_grid)

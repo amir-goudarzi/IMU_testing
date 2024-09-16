@@ -23,7 +23,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 def train_one_epoch(model: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, loss_scaler,
+                    device: torch.device, epoch: int, loss_scaler=None,
                     log_writer=None | SummaryWriter,
                     args=None,
                     task_name=None,
@@ -57,15 +57,20 @@ def train_one_epoch(model: torch.nn.Module,
             autocast = accelerator if accelerator is None else torch.cuda.amp
             loss_value, loss_total = train_forward(model, device, samples, autocast, args)
 
+            if loss_scaler is None:
+                accelerator.backward(loss_total)
+                
             if not math.isfinite(loss_value):
                 print("Loss is {}, stopping training".format(loss_value))
                 sys.exit(1)
 
             #loss /= accum_iter
             loss_total = loss_total / accum_iter
-            loss_scaler(loss_total, optimizer, parameters=model.parameters(),
-                        update_grad=(data_iter_step + 1) % accum_iter == 0)
-            
+            if loss_scaler is not None:
+                loss_scaler(loss_total, optimizer, parameters=model.parameters(),
+                            update_grad=(data_iter_step + 1) % accum_iter == 0)
+            else:
+                optimizer.step()
             if (data_iter_step + 1) % accum_iter == 0:
                 optimizer.zero_grad()
 

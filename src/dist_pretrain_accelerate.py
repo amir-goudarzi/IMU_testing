@@ -28,6 +28,9 @@ from subtrees.AudioMAE.util.misc import AcceleratorScalerWithGradNormCount as Ac
 import subtrees.AudioMAE.util.misc as misc
 from torch.utils.tensorboard import SummaryWriter
 
+from models.utils_mae import load_vit3d_model, load_mae_model_2d
+from utils.os_utils import load_config
+
 from data.dataset import make_dataset
 
 
@@ -52,8 +55,9 @@ def main(args):
         **cfg,
         **vars(args)
     }
-    accelerator.init_trackers(f"{cfg['task_name']}_pretrain", config=config, init_kwargs={"wandb":{"name":f"mask_ratio={args.mask_ratio}"}})
-    loss_scaler = AcceleratorScaler(accelerator=accelerator)
+    accelerator.init_trackers(f"{cfg['task_name']}_pretrain_{args.dataset}", config=config, init_kwargs={"wandb":{"name":f"mask_ratio={args.mask_ratio}"}})
+    # loss_scaler = AcceleratorScaler(accelerator=accelerator)
+    loss_scaler = None
     dataloader, model, optimizer = accelerator.prepare(dataloader, model, optimizer)
 
     for epoch in range(args.epochs):
@@ -90,6 +94,7 @@ def main(args):
 def load_train_objs(cfg, args):
 
     if args.dataset == 'wear_ssl':
+        # cfg['dataset']['mean_std_path'] = cfg['mean_std_path']
         train_set = make_dataset(
         name=args.dataset,
         is_pretrain=True,
@@ -120,12 +125,34 @@ def load_train_objs(cfg, args):
         num_workers=args.num_workers,
     )
 
-    model = modeling(
-        seconds=args.seconds,
-        matrix_type=args.matrix_type,
-        audio_exp=args.audio_exp,
-        cfg=cfg
-    )
+    if args.dataset == 'wear_ssl':
+        # model = load_vit3d_model(
+        #     seconds=args.seconds,
+        #     matrix_type=args.matrix_type,
+        #     cfg=cfg,
+        # )
+        model = modeling(
+            seconds=args.seconds,
+            matrix_type=args.matrix_type,
+            audio_exp=args.audio_exp,
+            cfg=cfg
+        )
+
+        model = load_mae_model_2d(
+            finetune=args.resume,
+            eval=False,
+            model=model
+        )
+    elif args.dataset == 'egoexo4d':
+        model = modeling(
+            seconds=args.seconds,
+            matrix_type=args.matrix_type,
+            audio_exp=args.audio_exp,
+            cfg=cfg
+        )
+    else:
+        raise ValueError(f"Dataset {args.dataset} not supported")
+    
     world_size = args.nodes * args.gpus_per_node
     eff_batch_size = args.batch_size * args.accum_iter * world_size
 
@@ -143,6 +170,6 @@ if __name__ == "__main__":
     parent_args = get_args_parser()
     parent_args.add_argument("--nodes", type=int, required=True)
     parent_args.add_argument("--gpus_per_node", type=int, required=True)
-
+    parent_args.add_argument("--split", type=int, default=None)
     args = parent_args.parse_args()
     main(args)

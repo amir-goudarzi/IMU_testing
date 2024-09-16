@@ -258,7 +258,7 @@ def modeling(
 
     return model
 
-def load_model(finetune, eval, model):
+def load_model(finetune, eval, model, global_pool=True):
     if finetune:
         # accelerator.load_state(finetune)
         checkpoint_model = load_file(os.path.join(finetune, 'model.safetensors'))
@@ -273,6 +273,11 @@ def load_model(finetune, eval, model):
         # load pre-trained model
         msg = model.load_state_dict(checkpoint_model, strict=False)
         print(msg)
+
+        if global_pool:
+            assert set(msg.missing_keys) == {'head.weight', 'head.bias', 'fc_norm.weight', 'fc_norm.bias'}
+        else:
+            assert set(msg.missing_keys) == {'head.weight', 'head.bias'}
 
         # manually initialize fc layer
         if not eval:

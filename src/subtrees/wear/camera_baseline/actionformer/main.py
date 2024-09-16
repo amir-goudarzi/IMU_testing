@@ -63,15 +63,18 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
     # set bs = 1, and disable shuffle
     val_loader = make_data_loader(val_dataset, False, None, 1, cfg['loader']['num_workers'])
 
-    # model
-    model = make_meta_arch(args, cfg['model']['model_name'], **cfg['model'])
 
     mae_backbone = None
     model_ema = None
     cfg_mae = None
 
+
+    # TODO: old version, now handled by pre-extracted features
     if args.config_mae:
+        # model
         cfg_mae = load_config(args.config_mae)
+        cfg['model']['input_dim'] = cfg_mae['model']['embed_dim']
+        model = make_meta_arch(args, cfg['model']['model_name'], **cfg['model'])
         cfg_mae_loading = deepcopy(cfg_mae)
         mae_backbone = load_vit3d_model(
             seconds=args.seconds,
@@ -88,6 +91,7 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
             model_ema = ModelEma(model.model_on_top)
             model_ema = model_ema.to(run.device)
     else:
+        model = make_meta_arch(args, cfg['model']['model_name'], **cfg['model'])
         if run.is_main_process:
             model_ema = ModelEma(model)
             model_ema = model_ema.to(run.device)
@@ -103,6 +107,7 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
     model, train_loader, val_loader, optimizer, scheduler = run.prepare(
         model, train_loader, val_loader, optimizer, scheduler
     )
+
     print("Number of learnable parameters for ActionFormer: {}".format(sum(p.numel() for p in model.module.parameters() if p.requires_grad)))
 
     # resume from a checkpoint?

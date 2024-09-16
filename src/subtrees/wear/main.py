@@ -52,17 +52,21 @@ def main(args):
     with open(os.path.join(log_dir, 'cfg.txt'), 'w') as fid:
         pprint(config, stream=fid)
         fid.flush()
-    
-    if args.neptune:
-        run['eval_type'] = args.eval_type
-        run['config_name'] = args.config
-        run['config'].upload(os.path.join(log_dir, 'cfg.txt'))
 
     rng_generator = fix_random_seed(config['init_rand_seed'], include_cuda=True)    
 
     all_v_pred = np.array([])
     all_v_gt = np.array([])
     all_v_mAP = np.empty((0, len(config['dataset']['tiou_thresholds'])))
+
+    feats_path = None
+
+    if config['dataset']['feat_folder'].endswith('mae'):
+        splits = [config['anno_json'][i].split('wear_')[1].split('.')[0] for i in range(len(config['anno_json']))]
+        feats_path = [
+            os.path.join(config['dataset']['feat_folder'], splits[i], 'mask_ratio{' + str(args.mask_ratio) + '}_' + 'mae_vit_base_patch16') 
+            for i in range(len(splits))]
+
 
     for i, anno_split in enumerate(config['anno_json']):
         with open(anno_split) as f:
@@ -72,6 +76,10 @@ def main(args):
         config['label_dict'] = dict(zip(config['labels'], list(range(len(config['labels'])))))
         train_sbjs = [x for x in anno_file if anno_file[x]['subset'] == 'Training']
         val_sbjs = [x for x in anno_file if anno_file[x]['subset'] == 'Validation']
+
+        # Adaptation for MAE pre-extracted features.
+        if feats_path is not None:
+            config['dataset']['feat_folder'] = feats_path[i]
 
         print('Split {} / {}'.format(i + 1, len(config['anno_json'])))
         if args.eval_type == 'split':
@@ -212,6 +220,7 @@ if __name__ == '__main__':
                     help='Perform evaluation only')
     parser.add_argument('--mask_t_prob', default=0.0, type=float, help='T masking ratio (percentage of removed patches).') #  
     parser.add_argument('--mask_f_prob', default=0.0, type=float, help='F masking ratio (percentage of removed patches).') #  
+    parser.add_argument('--mask_ratio', default=0.9, type=float, help='rand masking ratio (percentage of removed patches).') #  
     parser.add_argument('--batch_size', default=64, type=int, help='Batch size.')
     parser.set_defaults(audio_exp=True)
     args = parser.parse_args()

@@ -40,7 +40,7 @@ def train_one_epoch(
         optimizer: torch.optim.Optimizer,
         # device: torch.device,
         epoch: int,
-        loss_scaler,
+        loss_scaler = None,
         max_norm: float = 0,
         mixup_fn: Optional[Mixup] = None,
         log_writer=None | SummaryWriter,
@@ -67,8 +67,6 @@ def train_one_epoch(
     for data_iter_step, (samples, targets) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         with accelerator.accumulate(model):
             # we use a per iteration (instead of per epoch) lr scheduler
-            if data_iter_step % accum_iter == 0:
-                lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
 
             # samples = samples.to(device, non_blocking=True)
             # targets = targets.to(device, non_blocking=True)
@@ -85,7 +83,8 @@ def train_one_epoch(
                 targets = one_hot(targets, model.module.num_classes).to(torch.float32)
 
             outputs, loss = train_forward(model, samples, targets, criterion, accelerator, mask_t_prob=args.mask_t_prob, mask_f_prob=args.mask_f_prob)
-
+            if loss_scaler is None:
+                accelerator.backward(loss)
             loss_value = loss.item()
 
             if not math.isfinite(loss_value):
@@ -93,9 +92,16 @@ def train_one_epoch(
                 sys.exit(1)
 
             loss /= accum_iter
-            loss_scaler(loss, optimizer, clip_grad=max_norm,
-                        parameters=model.parameters(), create_graph=False,
-                        update_grad=(data_iter_step + 1) % accum_iter == 0)
+            if data_iter_step % accum_iter == 0:
+                lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
+
+            if loss_scaler is not None:
+                loss_scaler(loss, optimizer, clip_grad=max_norm,
+                            parameters=model.parameters(), create_graph=False,
+                            update_grad=(data_iter_step + 1) % accum_iter == 0)
+            else:
+                optimizer.step()
+
             if (data_iter_step + 1) % accum_iter == 0:
                 optimizer.zero_grad()
 
@@ -255,14 +261,13 @@ def imu_omnivore(model, samples, targets, criterion, autocast, mask_t_prob=0.0, 
     return outputs, loss
 
 
-def imu(model, samples, targets, criterion, autocast, mask_t_prob=0.0, mask_f_prob=0.0):
+def imu(model, samples, targets, criterion, accelerator: accelerate.Accelerator, mask_t_prob=0.0, mask_f_prob=0.0):
     # samples = samples.to(device, non_blocking=True)
-    with autocast.autocast():
+    with accelerator.autocast():
         outputs = model(
             samples,
             mask_t_prob=mask_t_prob,
             mask_f_prob=mask_f_prob
         )
         loss = criterion(outputs, targets)
-
     return outputs, loss

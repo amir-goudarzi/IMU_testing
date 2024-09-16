@@ -12,6 +12,7 @@ from accelerate import Accelerator, GradScalerKwargs
 
 from audiomae_ft import get_args_parser, modeling, get_mixup, load_model
 from utils.os_utils import load_config
+from utils.lars import LARS
 
 sys.path.append('.')
 sys.path.append('..')
@@ -53,11 +54,16 @@ def main(args):
 
     if args.mixup > 0.0:
         tags.append('mixup')
-    else:
+    elif args.label_balance:
         tags.append('label_balance')
 
     if not args.finetune:
         tags.append('from_scratch')
+
+    if cfg['model']['global_pool']:
+        tags.append('global_pool')
+    else:
+        tags.append('cls_token')
 
     accelerator.init_trackers(project_name, config=config, init_kwargs={"wandb":{"name":f"{masking2d}_{mask_ratio}", "tags":tags}})
 
@@ -72,9 +78,11 @@ def main(args):
 
     if args.mixup > 0.0:
         train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args)
-    else:
+    elif args.label_balance:
         train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args, training_priors=training_priors)
-    load_model(args.finetune, args.eval, model)
+    else:
+        train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args)
+
     args.nb_classes = cfg['model']['num_classes']
     mixup_fn = None
     mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
@@ -95,7 +103,7 @@ def main(args):
     # model, optimizer = accelerator.load_state(output_dir=os.path.join(args.output_dir, "accelerator_state"))
     # accelerator.wait_for_everyone()
 
-    loss_scaler = AcceleratorScaler(accelerator=accelerator)
+    # loss_scaler = AcceleratorScaler(accelerator=accelerator)
     model, optimizer, train_loader, valid_loader, criterion = accelerator.prepare(model, optimizer, train_loader, valid_loader, criterion)
 
     if accelerator.is_main_process:
@@ -111,7 +119,7 @@ def main(args):
             optimizer,
             epoch,
             # device,
-            loss_scaler,
+            # loss_scaler,
             max_norm=args.clip_grad,
             mixup_fn=mixup_fn,
             log_writer=log_writer,
@@ -227,6 +235,7 @@ def load_train_objs(cfg, args, training_priors=None):
         finetune=args.finetune,
         eval=args.eval
     )
+    model = load_model(args.finetune, args.eval, model, global_pool=cfg['model']['global_pool'])
 
     world_size = args.nodes * args.gpus_per_node
     eff_batch_size = args.batch_size * args.accum_iter * world_size
@@ -235,7 +244,9 @@ def load_train_objs(cfg, args, training_priors=None):
         args.lr = args.blr * eff_batch_size / 256
 
     no_weight_decay_list = model.no_weight_decay()
+    
     if cfg['linprob']:
+        model.head = torch.nn.Sequential(torch.nn.BatchNorm1d(model.head.in_features, affine=False, eps=1e-6), model.head)
         no_weight_decay_list = lrd.linprob_parse(model, no_weight_decay_list)
 
     param_groups = lrd.param_groups_lrd(model, args.weight_decay,
@@ -246,8 +257,14 @@ def load_train_objs(cfg, args, training_priors=None):
     # FIXME: Uncomment for debugging
     # for name, param in model.named_parameters():
     #     print(name, param.requires_grad)
+    optimizer = None
 
-    optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
+    if cfg['linprob']:
+        # optimizer = LARS(model.head.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=0.9)
+        optimizer = torch.optim.SGD(model.head.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
+    else:
+        optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
+
     # loss_scaler = NativeScaler()
     mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
 
@@ -271,6 +288,7 @@ if __name__ == "__main__":
     parent_args = get_args_parser()
     parent_args.add_argument("--nodes", type=int, required=True)
     parent_args.add_argument("--gpus_per_node", type=int, required=True)
-
+    parent_args.add_argument("--label_balance", action="store_true")
+    parent_args.set_defaults(label_balance=False)
     args = parent_args.parse_args()
     main(args)

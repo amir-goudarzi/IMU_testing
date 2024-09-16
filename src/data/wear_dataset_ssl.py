@@ -30,7 +30,9 @@ class WearDatasetSSL(Dataset):
             use_cache=False,
             transforms=None,
             temporal_points=None,
-            resizes=(64, 64)
+            resizes=(64, 64),
+            is_train=False,
+            mean_std_path=None
             ):
         self.src_dir = src_dir
         self.window_size = window_size
@@ -42,6 +44,10 @@ class WearDatasetSSL(Dataset):
         self.annotations = self.__load_annotations__(os.path.join(annotations, filename))
         self.use_cache = use_cache
 
+        if mean_std_path is not None:
+            mean = torch.load(os.path.join(mean_std_path, 'accl_mean.pt'))
+            std = torch.load(os.path.join(mean_std_path, 'accl_std.pt'))
+            
         self.transforms = SpectrogramsGenerator(
             window_size=window_size,
             n_fft=n_fft,
@@ -52,7 +58,10 @@ class WearDatasetSSL(Dataset):
             sampling_rate=sampling_rate,
             downsampling_rate=downsampling_rate,
             transforms=transforms,
-            resizes=resizes
+            resizes=resizes,
+            is_train=is_train,
+            mean=mean,
+            std=std
         )
         
     def __len__(self):
@@ -74,6 +83,7 @@ class WearDatasetSSL(Dataset):
         accl = self.transforms(accl)
 
         return accl
+        # return accl.reshape(3,4,accl.shape[-2], accl.shape[-1])
 
 
     def set_use_cache(self, use_cache):

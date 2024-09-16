@@ -49,7 +49,7 @@ model: {
   mask_2d: False,
   # mask_t_prob: 0.2,
   # mask_f_prob: 0.2,
-  drop_path_rate: 0.1,
+  drop_path_rate: 0.0,
   global_pool: True,
   # pretrain: False,
   use_custom_patch: False,

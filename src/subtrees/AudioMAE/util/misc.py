@@ -299,6 +299,12 @@ class AcceleratorScalerWithGradNormCount:
         else:
             norm = None
         return norm
+    
+    def state_dict(self):
+        return self.scaler.state_dict()
+
+    def load_state_dict(self, state_dict):
+        self.scaler.load_state_dict(state_dict)
 
 
 def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:

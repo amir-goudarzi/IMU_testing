@@ -80,6 +80,7 @@ class PatchEmbed3D_new(nn.Module):
 
         self.proj = nn.Conv3d(in_chans, embed_dim, kernel_size=patch_size, stride=stride)
         _, _, t, h, w = self.get_output_shape(video_size) # n, emb_dim, h, w
+        self.patch_hw = (h, w)
         self.patch_thw = (t, h, w)
         self.num_patches = t*h*w
 

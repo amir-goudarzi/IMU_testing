@@ -8,7 +8,7 @@ model=mae_vit_base_patch$patch
 nodes=1
 gpus_per_node=2
 MASTER_PORT=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
-mask_ratio=0.9
+mask_ratio=0.8
 
 accelerate launch --main_process_port $MASTER_PORT src/dist_pretrain_accelerate.py \
     --log_dir $experiments_dir/mask_ratio{$mask_ratio}_$model/ \

@@ -1,0 +1,234 @@
+# ------------------------------------------------------------------------
+# Main script to commence baseline experiments on WEAR dataset
+# ------------------------------------------------------------------------
+# Author: Marius Bock
+# Email: marius.bock(at)uni-siegen.de
+# ------------------------------------------------------------------------
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+import argparse
+import datetime
+import json
+import os
+from pprint import pprint
+import sys
+import time
+
+import pandas as pd
+import numpy as np
+import neptune
+import wandb
+from neptune.types import File
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, ConfusionMatrixDisplay
+
+import torch
+from torch.nn import functional as F
+from inertial_baseline.train import run_inertial_network
+from utils.torch_utils import fix_random_seed
+from utils.os_utils import Logger, load_config
+from camera_baseline.actionformer.libs.core.config import _update_config
+import matplotlib.pyplot as plt
+from camera_baseline.actionformer.main import run_actionformer
+from camera_baseline.actionformer.libs.datasets import make_dataset, make_data_loader
+from camera_baseline.tridet.main import run_tridet
+from accelerate import Accelerator, GradScalerKwargs
+from safetensors.torch import load_file
+from camera_baseline.actionformer.libs.modeling import make_meta_arch
+
+sys.path.append(os.path.join('../../../src'))
+sys.path.append(os.path.join('src'))
+from models.utils_mae import load_vit3d_model
+from utils.os_utils import load_config
+from features.imu_preprocessing import SpectrogramsGenerator
+
+@torch.no_grad()
+def preprocessing(video_list, max_seq_len, max_div_factor, device, training, padding_val=0.0):
+    """
+        Generate batched features and masks from a list of dict items
+    """
+    feats = [x['feats'] for x in video_list]
+    feats_lens = torch.as_tensor([feat.shape[-1] for feat in feats])
+    max_len = feats_lens.max(0).values.item()
+
+    if training:
+        assert max_len <= max_seq_len, "Input length must be smaller than max_seq_len during training"
+        # set max_len to self.max_seq_len
+        max_len = max_seq_len
+        # batch input shape B, C, T
+        batch_shape = [len(feats), feats[0].shape[0], max_len]
+        batched_inputs = feats[0].new_full(batch_shape, padding_val)
+        for feat, pad_feat in zip(feats, batched_inputs):
+            pad_feat[..., :feat.shape[-1]].copy_(feat)
+    else:
+        assert len(video_list) == 1, "Only support batch_size = 1 during inference"
+        # input length < self.max_seq_len, pad to max_seq_len
+        if max_len <= max_seq_len:
+            max_len = max_seq_len
+        else:
+            # pad the input to the next divisible size
+            stride = max_div_factor
+            max_len = (max_len + (stride - 1)) // stride * stride
+        padding_size = [0, max_len - feats_lens[0]]
+        batched_inputs = F.pad(
+            feats[0], padding_size, value=padding_val).unsqueeze(0)
+
+    # generate the mask
+    batched_masks = torch.arange(max_len)[None, :] < feats_lens[:, None]
+
+    # push to device
+    batched_inputs = batched_inputs.to(device)
+    batched_masks = batched_masks.unsqueeze(1).to(device)
+
+    return batched_inputs, batched_masks
+
+def epoch(args, specgram_transform, model, train_loader, config, accelerator, dummy_model, training):
+    seconds_bin = args.seconds * 50 * 4 * 3 # 2 seconds * 50 Hz * 4 sensors * 3 channels
+    model.eval()
+    map_fn = torch.vmap(specgram_transform, in_dims=0, randomness='same')
+    # loop over train set
+    for _, video_list in enumerate(train_loader, 0):
+        # batched_inputs, batched_masks = preprocessing(
+        #     video_list=video_list, 
+        #     max_seq_len=config['dataset']['max_seq_len'], 
+        #     max_div_factor=dummy_model.max_div_factor,
+        #     device=accelerator.device,
+        #     training=training)
+        '''
+        video_list = {'video_id'        : video_item['id'],
+            'feats'           : feats,      # C x T
+            'segments'        : segments,   # N x 2
+            'labels'          : labels,     # N
+            'fps'             : video_item['fps'],
+            'duration'        : video_item['duration'],
+            'feat_stride'     : feat_stride,
+            'feat_num_frames' : self.num_frames}
+        '''
+        if len(video_list) == 1:
+            batched_inputs = [video_list[0]['feats'][:seconds_bin, :].nan_to_num().permute(1,0)]
+        else:
+            batched_inputs = [video_list[i]['feats'][:seconds_bin, :].nan_to_num().permute(1,0) for i in range(len(video_list))]
+        feat_tot = None
+        b = 1 # Mini-batch
+        B = len(video_list)
+
+
+        # forward the model (wo. grad)
+        for vid_tot in batched_inputs:
+            vid_tot = vid_tot.to(accelerator.device)
+            feats = None
+            T, C = vid_tot.shape
+            vid_tot = vid_tot.reshape(T // b, b, C)
+            for vid in vid_tot:
+                vid = vid.reshape(b, 12, 2 * 50)
+                vid = map_fn(vid)
+                _, c, h, w = vid.shape
+                vid = vid.reshape(b, 3, 4, h, w)
+                with torch.no_grad():
+                    output, _, _, _ = model(vid, args.mask_ratio)
+                    output = output.mean(dim = 1)
+                if feats is None:
+                    feats = output.detach().cpu()
+                else:
+                    feats = torch.cat((feats, output.detach().cpu()), dim=0)
+            if feat_tot is None:
+                feat_tot = [feats.permute(1, 0)]
+            else:
+                feat_tot.append(feats.permute(1, 0))
+
+        for i, video_item in enumerate(video_list):
+            save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+            if not os.path.exists(save_path_mae):
+                os.makedirs(save_path_mae)
+            tmp = torch.cat((feat_tot[i], video_item['feats'][seconds_bin:, :].cpu()), dim=0).permute(1,0).numpy()
+            # tmp = feat_tot[i].numpy()
+
+            np.save(os.path.join(save_path_mae, video_item['video_id'] + '.npy'), tmp)
+
+def main(args):
+    run = None
+    accelerator = Accelerator()
+    args.gpu = accelerator.device
+    config = load_config(args.config)
+    config['init_rand_seed'] = args.seed
+    config['devices'] = [args.gpu]
+
+    ts = datetime.datetime.fromtimestamp(int(time.time()))
+    log_dir = os.path.join('logs', config['name'], str(ts) + '_' + args.run_id)
+    sys.stdout = Logger(os.path.join(log_dir, 'log.txt'))
+
+    # save the current cfg
+    with open(os.path.join(log_dir, 'cfg.txt'), 'w') as fid:
+        pprint(config, stream=fid)
+        fid.flush()
+
+    rng_generator = fix_random_seed(config['init_rand_seed'], include_cuda=True)    
+
+    all_v_pred = np.array([])
+    all_v_gt = np.array([])
+    all_v_mAP = np.empty((0, len(config['dataset']['tiou_thresholds'])))
+
+    i = args.split - 1
+    anno_split = config['anno_json'][i]
+    with open(anno_split) as f:
+        file = json.load(f)
+    anno_file = file['database']
+    config['labels'] = ['null'] + list(file['label_dict'])
+    config['label_dict'] = dict(zip(config['labels'], list(range(len(config['labels'])))))
+    train_sbjs = [x for x in anno_file if anno_file[x]['subset'] == 'Training']
+    val_sbjs = [x for x in anno_file if anno_file[x]['subset'] == 'Validation']
+
+    print('Split {} / {}'.format(i + 1, len(config['anno_json'])))
+    if args.eval_type == 'split':
+        name = 'split_' + str(i)
+    elif args.eval_type == 'loso':
+        name = 'sbj_' + str(i)
+    config['dataset']['json_anno'] = anno_split
+    if config['name'] == 'tadtr':
+        config['dataset']['json_info'] = config['info_json'][i]
+    
+    config = _update_config(config)
+
+    train_dataset = make_dataset(config['dataset_name'], True, config['train_split'], **config['dataset'])
+    val_dataset = make_dataset(config['dataset_name'], False, config['val_split'], **config['dataset'])
+    train_loader = make_data_loader(train_dataset, True, rng_generator, **config['loader'])
+# set bs = 1, and disable shuffle
+    val_loader = make_data_loader(val_dataset, False, None, 1, config['loader']['num_workers'])
+
+    dummy_model = make_meta_arch(args, config['model']['model_name'], **config['model'])
+
+    cfg_mae = load_config(args.config_mae)
+    cfg_mae['model']['extract_feats'] = True
+    model = load_vit3d_model(args.seconds, args.matrix_type, cfg_mae)
+    checkpoint_model = load_file(os.path.join(args.finetune, 'model.safetensors'))
+    print("Load pre-trained checkpoint from: %s" % args.finetune)
+    msg = model.load_state_dict(checkpoint_model, strict=False)
+    print(msg)
+
+    model, train_loader, val_loader = accelerator.prepare(model, train_loader, val_loader)
+
+    mean_std_path = cfg_mae['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]['mean_std_path']
+    mean, std = torch.load(os.path.join(mean_std_path, 'accl_mean.pt')), torch.load(os.path.join(mean_std_path, 'accl_std.pt'))
+    del cfg_mae['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]['mean_std_path']
+
+    specgram_transform = SpectrogramsGenerator(**cfg_mae['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type],
+                                                mean=mean, std=std, device=accelerator.device)
+
+    epoch(args, specgram_transform, model, train_loader, config, accelerator, dummy_model, training=True)
+    epoch(args, specgram_transform, model, val_loader, config, accelerator, dummy_model, training=False)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='WEAR baseline experiments')
+    parser.add_argument('--config', type=str, default='configs/config_wear.json', help='path to config file')
+    parser.add_argument('--config_mae', type=str, default='configs/config_mae.json', help='path to config file')
+    parser.add_argument('--run_id', type=str, default='0', help='run id')
+    parser.add_argument('--seed', type=int, default=0, help='random seed')
+    parser.add_argument('--device', type=str, default='cuda', help='gpu id')
+    parser.add_argument('--eval_type', type=str, default='split', help='split or loso')
+    parser.add_argument('--finetune', type=str, default='', help='path to finetune model')
+    parser.add_argument('--seconds', type=int, default=2)
+    parser.add_argument('--matrix_type', type=str, default='128x320')
+    parser.add_argument('--mask_ratio', type=float, default=0.8)
+    parser.add_argument('--split', type=int, default=1)
+    args = parser.parse_args()
+    main(args)

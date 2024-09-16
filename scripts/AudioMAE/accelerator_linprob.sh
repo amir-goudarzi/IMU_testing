@@ -21,10 +21,10 @@ do
         --epochs 30 \
         --blr 0.001 \
         --weight_decay 0.0001 \
-        --batch_size 16 \
+        --batch_size 256 \
         --warmup_epochs 4 \
         --mask_t_prob $mask_ratio \
-        --mixup 0.5 \
+        --mixup 0.0 \
         --dataset $dataset \
         --matrix_type 128x320 \
         --seconds 2 \
