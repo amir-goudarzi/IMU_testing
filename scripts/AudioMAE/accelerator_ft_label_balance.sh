@@ -22,7 +22,7 @@ do
         --blr 2e-4 \
         --weight_decay 0.0001 \
         --batch_size 128 \
-        --warmup_epochs 4 \
+        --warmup_epochs 3 \
         --mask_t_prob $mask_ratio \
         --mask_f_prob $mask_ratio \
         --mixup 0.0 \

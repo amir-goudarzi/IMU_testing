@@ -10,12 +10,12 @@ patch=16
 model=vit_base_patch$patch
 nodes=1
 matrix_type=128x320
-pretrain_mask_ratio=0.9
+pretrain_mask_ratio=0.8
 
 MASTER_PORT=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
 
 cd src/subtrees/wear
-for seed in 2 3
+for seed in 1 2 3
 do
     accelerate launch --main_process_port $MASTER_PORT main.py \
         --config $config \

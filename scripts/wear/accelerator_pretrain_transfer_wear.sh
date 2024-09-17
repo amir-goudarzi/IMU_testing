@@ -18,11 +18,11 @@ do
         --resume ./reports/experiments/audio_mae/128x320/egoexo4d/imu_omni/pretrain/mask_ratio{$mask_ratio}_mae_vit_base_patch16/accelerator_state \
         --split $split \
         --model $model \
-        --epochs 32 \
-        --blr 1e-3 \
+        --epochs 5 \
+        --blr 5e-4 \
         --weight_decay 0.0001 \
         --batch_size 32 \
-        --warmup_epochs 3 \
+        --warmup_epochs 1 \
         --mask_ratio $mask_ratio \
         --dataset $dataset \
         --matrix_type 128x320 \

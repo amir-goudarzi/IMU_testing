@@ -37,7 +37,8 @@ from camera_baseline.actionformer.libs.modeling import make_meta_arch
 
 sys.path.append(os.path.join('../../../src'))
 sys.path.append(os.path.join('src'))
-from models.utils_mae import load_vit3d_model
+from models.utils_mae import load_vit3d_model, load_mae_model_2d
+from audiomae_pretrain import modeling
 from utils.os_utils import load_config
 from features.imu_preprocessing import SpectrogramsGenerator
 
@@ -85,64 +86,77 @@ def epoch(args, specgram_transform, model, train_loader, config, accelerator, du
     seconds_bin = args.seconds * 50 * 4 * 3 # 2 seconds * 50 Hz * 4 sensors * 3 channels
     model.eval()
     map_fn = torch.vmap(specgram_transform, in_dims=0, randomness='same')
-    # loop over train set
-    for _, video_list in enumerate(train_loader, 0):
-        # batched_inputs, batched_masks = preprocessing(
-        #     video_list=video_list, 
-        #     max_seq_len=config['dataset']['max_seq_len'], 
-        #     max_div_factor=dummy_model.max_div_factor,
-        #     device=accelerator.device,
-        #     training=training)
-        '''
-        video_list = {'video_id'        : video_item['id'],
-            'feats'           : feats,      # C x T
-            'segments'        : segments,   # N x 2
-            'labels'          : labels,     # N
-            'fps'             : video_item['fps'],
-            'duration'        : video_item['duration'],
-            'feat_stride'     : feat_stride,
-            'feat_num_frames' : self.num_frames}
-        '''
-        if len(video_list) == 1:
-            batched_inputs = [video_list[0]['feats'][:seconds_bin, :].nan_to_num().permute(1,0)]
-        else:
-            batched_inputs = [video_list[i]['feats'][:seconds_bin, :].nan_to_num().permute(1,0) for i in range(len(video_list))]
-        feat_tot = None
-        b = 1 # Mini-batch
-        B = len(video_list)
 
+        
+
+    # # loop over train set
+    # for _, video_list in enumerate(train_loader, 0):
+    #     # batched_inputs, batched_masks = preprocessing(
+    #     #     video_list=video_list, 
+    #     #     max_seq_len=config['dataset']['max_seq_len'], 
+    #     #     max_div_factor=dummy_model.max_div_factor,
+    #     #     device=accelerator.device,
+    #     #     training=training)
+    #     '''
+    #     video_list = {'video_id'        : video_item['id'],
+    #         'feats'           : feats,      # C x T
+    #         'segments'        : segments,   # N x 2
+    #         'labels'          : labels,     # N
+    #         'fps'             : video_item['fps'],
+    #         'duration'        : video_item['duration'],
+    #         'feat_stride'     : feat_stride,
+    #         'feat_num_frames' : self.num_frames}
+    #     '''
+    #     if len(video_list) == 1:
+    #         batched_inputs = [video_list[0]['feats'][:seconds_bin, :].nan_to_num().permute(1,0)]
+    #     else:
+    #         batched_inputs = [video_list[i]['feats'][:seconds_bin, :].nan_to_num().permute(1,0) for i in range(len(video_list))]
+        # b = 1 # Mini-batch
+        # B = len(video_list)
+    dirname = config['dataset']['feat_folder']
+    
+    for filename in os.listdir(dirname):
+        if os.path.isdir(os.path.join(dirname, filename)):
+            continue
+        features = np.load(os.path.join(dirname, filename))
+        feat_tot = np.zeros((features.shape[0], 2048 + 768))
+        feat_tot[:, 768:] = features[:, seconds_bin:]
+
+        b = 1
+        batched_inputs = torch.tensor(features[:, :seconds_bin]).nan_to_num().to(torch.float32)
 
         # forward the model (wo. grad)
-        for vid_tot in batched_inputs:
-            vid_tot = vid_tot.to(accelerator.device)
-            feats = None
-            T, C = vid_tot.shape
-            vid_tot = vid_tot.reshape(T // b, b, C)
-            for vid in vid_tot:
-                vid = vid.reshape(b, 12, 2 * 50)
+        for i, vid in enumerate(batched_inputs):
+            with accelerator.autocast():
+                vid = vid.to(accelerator.device)
+                feats = None
+                vid = vid.unsqueeze(0).reshape(1, 12, 2 * 50)
                 vid = map_fn(vid)
                 _, c, h, w = vid.shape
-                vid = vid.reshape(b, 3, 4, h, w)
+
+                # TODO: uncomment for vit3d
+                # vid = vid.reshape(b, 3, 4, h, w)
+
                 with torch.no_grad():
-                    output, _, _, _ = model(vid, args.mask_ratio)
+                    output, _, _, _ = model(vid, mask_ratio=0.0)
                     output = output.mean(dim = 1)
-                if feats is None:
-                    feats = output.detach().cpu()
-                else:
-                    feats = torch.cat((feats, output.detach().cpu()), dim=0)
-            if feat_tot is None:
-                feat_tot = [feats.permute(1, 0)]
-            else:
-                feat_tot.append(feats.permute(1, 0))
+            
+                feat_tot[i, :768] = output.squeeze(0).cpu().numpy()
 
-        for i, video_item in enumerate(video_list):
-            save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
-            if not os.path.exists(save_path_mae):
-                os.makedirs(save_path_mae)
-            tmp = torch.cat((feat_tot[i], video_item['feats'][seconds_bin:, :].cpu()), dim=0).permute(1,0).numpy()
-            # tmp = feat_tot[i].numpy()
+        save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        if not os.path.exists(save_path_mae):
+            os.makedirs(save_path_mae)
+        
+        np.save(os.path.join(save_path_mae, filename), feat_tot)
 
-            np.save(os.path.join(save_path_mae, video_item['video_id'] + '.npy'), tmp)
+        # for i, video_item in enumerate(video_list):
+        #     save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        #     if not os.path.exists(save_path_mae):
+        #         os.makedirs(save_path_mae)
+        #     tmp = torch.cat((feat_tot[i], video_item['feats'][seconds_bin:, :].cpu()), dim=0).permute(1,0).numpy()
+        #     # tmp = feat_tot[i].numpy()
+
+        #     np.save(os.path.join(save_path_mae, video_item['video_id'] + '.npy'), tmp)
 
 def main(args):
     run = None
@@ -198,7 +212,20 @@ def main(args):
 
     cfg_mae = load_config(args.config_mae)
     cfg_mae['model']['extract_feats'] = True
-    model = load_vit3d_model(args.seconds, args.matrix_type, cfg_mae)
+
+    # TODO: uncomment for vit3d
+    # model = load_vit3d_model(args.seconds, args.matrix_type, cfg_mae)
+    model = modeling(
+            seconds=args.seconds,
+            matrix_type=args.matrix_type,
+            audio_exp=True,
+            cfg=cfg_mae
+        )
+    # model = load_mae_model_2d(
+    #     finetune=args.finetune,
+    #     eval=False,
+    #     model=model
+    # )
     checkpoint_model = load_file(os.path.join(args.finetune, 'model.safetensors'))
     print("Load pre-trained checkpoint from: %s" % args.finetune)
     msg = model.load_state_dict(checkpoint_model, strict=False)

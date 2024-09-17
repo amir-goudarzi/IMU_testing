@@ -1,2 +1,0 @@
-Split 1 / 3
-Number of learnable parameters for TriDet: 16507486
