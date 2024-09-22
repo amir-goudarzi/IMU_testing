@@ -146,9 +146,11 @@ def main(args):
             # run['conf_matrices'].append(_, name=name + '_raw')
             run.log({'conf_matrix': wandb.Image(os.path.join(log_dir, name + '_raw.png') )})
         run.end_training()
+        run.wait_for_everyone()
+        run = None
 
     kwargs = GradScalerKwargs()
-    run = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs], log_with="wandb")
+    run = Accelerator(kwargs_handlers=[kwargs], log_with="wandb")
     run.init_trackers(f"{args.run_id}", config=config, init_kwargs={"wandb":{"name":f"Average Statistics", "tags":[f'{seed=}']}})
     # final raw results across all splits
     conf_mat = confusion_matrix(all_v_gt, all_v_pred, normalize='true', labels=range(len(config['labels'])))
@@ -194,7 +196,7 @@ def main(args):
         for tiou, tiou_mAP in zip(config['dataset']['tiou_thresholds'], all_v_mAP.T):
             data['final_mAP@' + str(tiou)] = np.nanmean(tiou_mAP)
         run.log({'final_results': wandb.Table(data=[[key, value] for key, value in data.items()], columns=['metric', 'value'])})
-
+    run.wait_for_everyone()
     print("ALL FINISHED")
 
 if __name__ == '__main__':

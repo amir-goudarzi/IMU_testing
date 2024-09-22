@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.utils.data
 import numpy as np
 import pandas as pd
+from copy import deepcopy
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
 
 from utils.data_utils import convert_segments_to_samples
@@ -32,7 +33,7 @@ from accelerate import Accelerator, GradScalerKwargs
 from models.utils_mae import load_vit3d_model
 from utils.os_utils import load_config
 
-def run_tridet(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generator, run: Accelerator, args):
+def run_tridet(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generator, run: Accelerator, args, split: int):
     cfg = _update_config(cfg)
     split_name = cfg['dataset']['json_anno'].split('/')[-1].split('.')[0]
     mkdir_if_missing(os.path.join(ckpt_folder, 'ckpts'))
@@ -62,17 +63,32 @@ def run_tridet(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generator, run
     val_loader = make_data_loader(val_dataset, False, None, 1, cfg['loader']['num_workers'])
     
     # model
-    model = make_meta_arch(cfg['model']['model_name'], **cfg['model'])
     mae_backbone = None
     model_ema = None
+    cfg_mae = None
+
     if args.config_mae:
+                # model
         cfg_mae = load_config(args.config_mae)
-        mae_backbone = load_vit3d_model(cfg_mae['dataset']['seconds'], cfg_mae['dataset']['matrix_type'], cfg_mae, args.finetune, args.eval)
-        model = WrapperModel(mae_backbone, model)
+        cfg['model']['input_dim'] = cfg_mae['model']['embed_dim']
+        model = make_meta_arch(args, cfg['model']['model_name'], **cfg['model'])
+        cfg_mae_loading = deepcopy(cfg_mae)
+        mae_backbone = load_vit3d_model(
+            seconds=args.seconds,
+            matrix_type=args.matrix_type,
+            cfg=cfg_mae_loading,
+            finetune=args.finetune,
+            eval=args.eval,
+        )
+        del cfg_mae_loading
+        cfg_mae['mean_std_path'] = cfg_mae['mean_std_path'][split]
+
+        model = WrapperModel(mae_backbone, model, cfg_mae, args, accelerator=run)
         if run.is_main_process:
             model_ema = ModelEma(model.model_on_top)
             model_ema = model_ema.to(run.device)
     else:
+        model = make_meta_arch(cfg['model']['model_name'], **cfg['model'])
         if run.is_main_process:
             model_ema = ModelEma(model)
             model_ema = model_ema.to(run.device)

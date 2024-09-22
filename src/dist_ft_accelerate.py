@@ -28,6 +28,9 @@ from data.dataset import make_dataset
 
 
 def main(args):
+    patience = 5  # Number of epochs to wait before stopping
+    best_val_loss = float('inf')
+    epochs_no_improve = 0
 
     kwargs = GradScalerKwargs()
     accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs], log_with="wandb")
@@ -39,12 +42,17 @@ def main(args):
     linprob = 'linprob' if cfg['linprob'] else 'finetuning'
     masking2d = 'masking2d' if cfg['model']['mask_2d'] else 'nomasking2d'
     mask_ratio = None
+
     if cfg['model']['mask_2d']:
         mask_ratio_t = args.mask_t_prob
         mask_ratio_f = args.mask_f_prob
         mask_ratio = f"t{mask_ratio_t}_f{mask_ratio_f}"
     else:
         mask_ratio = args.mask_t_prob
+
+    if cfg['linprob']:
+        args.mask_t_prob = 0.0
+        args.mask_f_prob = 0.0
 
     tags = ['imu']
     project_name = f"imu_{linprob}"
@@ -54,7 +62,8 @@ def main(args):
 
     if args.mixup > 0.0:
         tags.append('mixup')
-    elif args.label_balance:
+    
+    if args.label_balance:
         tags.append('label_balance')
 
     if not args.finetune:
@@ -76,7 +85,9 @@ def main(args):
         training_priors = label_file['count_x'].apply(lambda x: label_file['count_x'].sum() / x).values.tolist()
         training_priors = torch.tensor(training_priors)
 
-    if args.mixup > 0.0:
+    if args.mixup > 0.0 and args.label_balance:
+        train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args, training_priors=training_priors)
+    elif args.mixup > 0.0:
         train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args)
     elif args.label_balance:
         train_loader, valid_loader, model, optimizer, criterion = load_train_objs(cfg, args, training_priors=training_priors)
@@ -137,6 +148,18 @@ def main(args):
                     class_labels=class_labels
                 )
         accelerator.wait_for_everyone()
+        # # Early stopping
+        # val_loss = test_stats['loss']
+        # if val_loss < best_val_loss:
+        #     best_val_loss = val_loss
+        #     epochs_no_improve = 0
+        # else:
+        #     epochs_no_improve += 1
+        #     if epochs_no_improve >= patience:
+        #         accelerator.save_state(output_dir=os.path.join(args.output_dir, "accelerator_state"))
+        #         print("Early stopping triggered")
+        #         break
+
         if accelerator.is_main_process:
             if args.output_dir and (epoch % args.save_every_epoch == 0 or epoch + 1 == args.epochs):
                 accelerator.save_state(output_dir=os.path.join(args.output_dir, "accelerator_state"))
@@ -235,7 +258,7 @@ def load_train_objs(cfg, args, training_priors=None):
         finetune=args.finetune,
         eval=args.eval
     )
-    model = load_model(args.finetune, args.eval, model, global_pool=cfg['model']['global_pool'])
+    model = load_model(args.finetune, args.eval, model, global_pool=cfg['model']['global_pool'], contains_omni=cfg['model']['omnivore_included'])
 
     world_size = args.nodes * args.gpus_per_node
     eff_batch_size = args.batch_size * args.accum_iter * world_size
@@ -245,9 +268,15 @@ def load_train_objs(cfg, args, training_priors=None):
 
     no_weight_decay_list = model.no_weight_decay()
     
-    if cfg['linprob']:
+    if cfg['linprob'] and not cfg['model']['omnivore_included']:
         model.head = torch.nn.Sequential(torch.nn.BatchNorm1d(model.head.in_features, affine=False, eps=1e-6), model.head)
         no_weight_decay_list = lrd.linprob_parse(model, no_weight_decay_list)
+    elif cfg['linprob'] and cfg['model']['omnivore_included']:
+        model.late_fusion = torch.nn.Sequential(torch.nn.BatchNorm1d(model.late_fusion.in_features, affine=False, eps=1e-6), model.late_fusion)
+        no_weight_decay_list = lrd.linprob_parse_omni_late_fusion(model, no_weight_decay_list)
+    # elif cfg['linprob'] and cfg['model']['omnivore_included']:
+    #     model.omni_classifier = torch.nn.Sequential(torch.nn.BatchNorm1d(model.omni_classifier.in_features, affine=False, eps=1e-6), model.omni_classifier)
+    #     no_weight_decay_list = lrd.linprob_parse_omni(model, no_weight_decay_list)
 
     param_groups = lrd.param_groups_lrd(model, args.weight_decay,
         no_weight_decay_list=model.no_weight_decay(),
@@ -261,7 +290,7 @@ def load_train_objs(cfg, args, training_priors=None):
 
     if cfg['linprob']:
         # optimizer = LARS(model.head.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=0.9)
-        optimizer = torch.optim.SGD(model.head.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
+        optimizer = torch.optim.SGD(param_groups, lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
     else:
         optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
 
@@ -277,9 +306,9 @@ def load_train_objs(cfg, args, training_priors=None):
             criterion = BCEWithLogitsLoss()
     else:
         if training_priors is not None:
-            criterion = CrossEntropyLoss(weight=training_priors)
+            criterion = CrossEntropyLoss(weight=training_priors, label_smoothing=args.smoothing) # works better
         else:
-            criterion = CrossEntropyLoss()
+            criterion = CrossEntropyLoss(label_smoothing=args.smoothing)
     # criterion = CrossEntropyLoss()
     # criterion = SoftTargetCrossEntropy()
     return train_loader, valid_loader, model, optimizer, criterion

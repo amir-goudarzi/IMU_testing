@@ -38,6 +38,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         if self.omnivore_included:
             self.omni_classifier = nn.Linear(1536, self.num_classes)
+            self.late_fusion = nn.Linear(self.num_classes * 2, self.num_classes)
+
         self.wear = wear
         if not self.classification:
             del self.head  # remove the original head
@@ -297,7 +299,11 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             x = self.head(x)
             if self.omnivore_included:
                 vid = self.omni_classifier(vid)
-                x = x + vid
+                x = torch.cat((x, vid), dim=1)
+                x = self.late_fusion(x)
+            # if self.omnivore_included:
+            #     vid = self.omni_classifier(vid)
+            #     x = x + vid
         return x
     
 

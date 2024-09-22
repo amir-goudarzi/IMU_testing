@@ -2,15 +2,10 @@
 
 backwards=../../..
 # config=configs/120_frames_60_stride/actionformer_mae.yaml
-config=./configs/120_frames_60_stride/actionformer_inertial_mae.yaml
+config=./configs/120_frames_60_stride/tridet_camera.yaml
 eval_type=split
-run_id=actionformer_inertial_mae
+run_id=tridet_camera
 seconds=2
-patch=16
-model=vit_base_patch$patch
-nodes=1
-matrix_type=128x320
-pretrain_mask_ratio=0.8
 
 MASTER_PORT=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
 
@@ -22,6 +17,5 @@ do
         --eval_type $eval_type \
         --run_id $run_id \
         --seconds $seconds \
-        --seed $seed \
-        --mask_ratio $pretrain_mask_ratio
+        --seed $seed
 done

@@ -9,14 +9,18 @@ import seaborn as sns
 from .utils import majorityVoting, ANETdetection, convert_samples_to_segments
 
 # postprocessing parameters
-path_to_preds = ['path/to/preds/to/be/analysed']
+path_to_preds = [
+    'logs/actionformer/2024-09-05 14:43:49_actionformer_combined',
+    'logs/actionformer/2024-09-05 22:07:04_actionformer_combined',
+    'logs/actionformer/2024-09-05 23:13:46_actionformer_combined'
+]
 seeds = [1, 2, 3]
 sampling_rate = 50
 majority_filters = [1, 251, 501, 751, 1001, 1251]
 json_files = [
-    'data/wear/annotations/wear_split_1.json', 
-    'data/wear/annotations/wear_split_2.json', 
-    'data/wear/annotations/wear_split_3.json'
+    '/data2/WEAR/annotations/wear_split_1.json', 
+    '/data2/WEAR/annotations/wear_split_2.json', 
+    '/data2/WEAR/annotations/wear_split_3.json'
     ]
 
 

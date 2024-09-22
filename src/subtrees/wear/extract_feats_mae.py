@@ -42,45 +42,6 @@ from audiomae_pretrain import modeling
 from utils.os_utils import load_config
 from features.imu_preprocessing import SpectrogramsGenerator
 
-@torch.no_grad()
-def preprocessing(video_list, max_seq_len, max_div_factor, device, training, padding_val=0.0):
-    """
-        Generate batched features and masks from a list of dict items
-    """
-    feats = [x['feats'] for x in video_list]
-    feats_lens = torch.as_tensor([feat.shape[-1] for feat in feats])
-    max_len = feats_lens.max(0).values.item()
-
-    if training:
-        assert max_len <= max_seq_len, "Input length must be smaller than max_seq_len during training"
-        # set max_len to self.max_seq_len
-        max_len = max_seq_len
-        # batch input shape B, C, T
-        batch_shape = [len(feats), feats[0].shape[0], max_len]
-        batched_inputs = feats[0].new_full(batch_shape, padding_val)
-        for feat, pad_feat in zip(feats, batched_inputs):
-            pad_feat[..., :feat.shape[-1]].copy_(feat)
-    else:
-        assert len(video_list) == 1, "Only support batch_size = 1 during inference"
-        # input length < self.max_seq_len, pad to max_seq_len
-        if max_len <= max_seq_len:
-            max_len = max_seq_len
-        else:
-            # pad the input to the next divisible size
-            stride = max_div_factor
-            max_len = (max_len + (stride - 1)) // stride * stride
-        padding_size = [0, max_len - feats_lens[0]]
-        batched_inputs = F.pad(
-            feats[0], padding_size, value=padding_val).unsqueeze(0)
-
-    # generate the mask
-    batched_masks = torch.arange(max_len)[None, :] < feats_lens[:, None]
-
-    # push to device
-    batched_inputs = batched_inputs.to(device)
-    batched_masks = batched_masks.unsqueeze(1).to(device)
-
-    return batched_inputs, batched_masks
 
 def epoch(args, specgram_transform, model, train_loader, config, accelerator, dummy_model, training):
     seconds_bin = args.seconds * 50 * 4 * 3 # 2 seconds * 50 Hz * 4 sensors * 3 channels
@@ -243,6 +204,22 @@ def main(args):
     epoch(args, specgram_transform, model, train_loader, config, accelerator, dummy_model, training=True)
     epoch(args, specgram_transform, model, val_loader, config, accelerator, dummy_model, training=False)
 
+def combined_to_inertial(args):
+    config = load_config(args.config)
+
+    combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+ 
+    save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+
+    for filename in os.listdir(combined_path_mae):
+        if os.path.isdir(os.path.join(combined_path_mae, filename)):
+            continue
+        features = np.load(os.path.join(combined_path_mae, filename))
+        features = features[:, :768]
+
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        np.save(os.path.join(save_path, filename), features)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='WEAR baseline experiments')
@@ -257,5 +234,10 @@ if __name__ == '__main__':
     parser.add_argument('--matrix_type', type=str, default='128x320')
     parser.add_argument('--mask_ratio', type=float, default=0.8)
     parser.add_argument('--split', type=int, default=1)
+    parser.add_argument('--combined_to_inertial', action='store_true', default=False)
+
     args = parser.parse_args()
-    main(args)
+    if args.combined_to_inertial:
+        combined_to_inertial(args)
+    else:
+        main(args)

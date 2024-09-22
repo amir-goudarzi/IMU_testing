@@ -19,9 +19,9 @@ do
         --finetune ./reports/experiments/audio_mae/128x320/egoexo4d/pretrain/mask_ratio{$mask_ratio}_mae_$model/accelerator_state \
         --model $model \
         --epochs 30 \
-        --blr 0.001 \
+        --blr 0.01 \
         --weight_decay 0.0001 \
-        --batch_size 256 \
+        --batch_size 512 \
         --warmup_epochs 4 \
         --mask_t_prob $mask_ratio \
         --mixup 0.0 \

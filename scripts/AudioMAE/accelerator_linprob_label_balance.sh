@@ -20,10 +20,10 @@ do
         --finetune ./reports/experiments/audio_mae/128x320/egoexo4d/pretrain/mask_ratio{$mask_ratio}_mae_$model/accelerator_state \
         --model $model \
         --epochs 30 \
-        --blr 0.01 \
-        --weight_decay 1e-4 \
-        --batch_size 512 \
-        --warmup_epochs 4 \
+        --blr 1e-4 \
+        --batch_size 128 \
+        --weight_decay 1e-6 \
+        --warmup_epochs 3 \
         --mask_t_prob 0.0 \
         --mixup 0.0 \
         --dataset $dataset \
@@ -31,5 +31,5 @@ do
         --seconds 2 \
         --nodes $nodes \
         --gpus_per_node $gpus_per_node \
-        # --label_balance
+        --label_balance
 done

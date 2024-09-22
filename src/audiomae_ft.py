@@ -258,7 +258,7 @@ def modeling(
 
     return model
 
-def load_model(finetune, eval, model, global_pool=True):
+def load_model(finetune, eval, model, global_pool=True, contains_omni=False):
     if finetune:
         # accelerator.load_state(finetune)
         checkpoint_model = load_file(os.path.join(finetune, 'model.safetensors'))
@@ -274,10 +274,21 @@ def load_model(finetune, eval, model, global_pool=True):
         msg = model.load_state_dict(checkpoint_model, strict=False)
         print(msg)
 
+        missing_keys = {'head.weight', 'head.bias'}
+
+        if contains_omni:
+            missing_keys.add('omni_classifier.weight')
+            missing_keys.add('omni_classifier.bias')
+            # TODO: for concatenated logits
+            missing_keys.add('late_fusion.weight')
+            missing_keys.add('late_fusion.bias')
+
         if global_pool:
-            assert set(msg.missing_keys) == {'head.weight', 'head.bias', 'fc_norm.weight', 'fc_norm.bias'}
+            missing_keys.add('fc_norm.weight')
+            missing_keys.add('fc_norm.bias')
+            assert set(msg.missing_keys) == missing_keys
         else:
-            assert set(msg.missing_keys) == {'head.weight', 'head.bias'}
+            assert set(msg.missing_keys) == missing_keys
 
         # manually initialize fc layer
         if not eval:

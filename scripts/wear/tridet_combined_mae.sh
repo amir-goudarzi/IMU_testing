@@ -2,9 +2,9 @@
 
 backwards=../../..
 # config=configs/120_frames_60_stride/actionformer_mae.yaml
-config=./configs/120_frames_60_stride/actionformer_inertial_mae.yaml
+config=./configs/120_frames_60_stride/tridet_combined_mae.yaml
 eval_type=split
-run_id=actionformer_inertial_mae
+run_id=tridet_combined_mae
 seconds=2
 patch=16
 model=vit_base_patch$patch

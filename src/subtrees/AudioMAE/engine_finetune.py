@@ -215,7 +215,7 @@ def evaluate(
         # plt.savefig(plot_path)
         # plt.close()
 
-        if epoch == 5 or epoch + 1 == args.epochs:
+        if epoch + 1 == args.epochs:
             per_class_accuracy = confusion_matrix(targets_conf_matrix, outputs_conf_matrix, labels=range(model.module.num_classes))
             per_class_accuracy = per_class_accuracy.diagonal() / per_class_accuracy.sum(axis=1)
             per_class_accuracy = {class_labels[i]: acc for i, acc in enumerate(per_class_accuracy)}
