@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss
 from torch.utils.data import DataLoader
 import os
@@ -25,6 +26,8 @@ from torch.utils.tensorboard import SummaryWriter
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
 from data.dataset import make_dataset
+
+from models.multimodal import custom_late_fusion
 
 
 def main(args):
@@ -58,6 +61,7 @@ def main(args):
     project_name = f"imu_{linprob}"
     if cfg['model']['omnivore_included']:
         # project_name = f"imu_{linprob}_omnivore"
+        project_name = f"imu_omni_{linprob}"
         tags.append('omnivore')
 
     if args.mixup > 0.0:
@@ -68,6 +72,12 @@ def main(args):
 
     if not args.finetune:
         tags.append('from_scratch')
+    
+    if args.interfuse:
+        cfg['model']['interfuse'] = args.interfuse
+        tags.append('intermediate_fusion')
+    else:
+        tags.append('late_fusion')
 
     if cfg['model']['global_pool']:
         tags.append('global_pool')
@@ -251,6 +261,13 @@ def load_train_objs(cfg, args, training_priors=None):
         pin_memory=True,
     )
 
+    cfg['model']['dropout'] = args.drop_path
+
+    is_multimodal = cfg['model']['omnivore_included']
+    # if not cfg['linprob'] and is_multimodal:
+    #     cfg['model']['classification'] = False  # Return the features of the model
+    #     cfg['model']['omnivore_included'] = False
+
     model = modeling(
         seconds=args.seconds,
         matrix_type=args.matrix_type,
@@ -258,7 +275,15 @@ def load_train_objs(cfg, args, training_priors=None):
         finetune=args.finetune,
         eval=args.eval
     )
-    model = load_model(args.finetune, args.eval, model, global_pool=cfg['model']['global_pool'], contains_omni=cfg['model']['omnivore_included'])
+    model = load_model(args.finetune, args.eval, model, global_pool=cfg['model']['global_pool'], contains_omni=cfg['model']['omnivore_included'], args=args)
+
+    if is_multimodal:
+        model = custom_late_fusion(
+            model=model,
+            in_dim=768 + 1536,
+            num_classes=cfg['model']['num_classes'],
+            hidden_dims=[1024, 512, 256]
+        )
 
     world_size = args.nodes * args.gpus_per_node
     eff_batch_size = args.batch_size * args.accum_iter * world_size
@@ -267,19 +292,26 @@ def load_train_objs(cfg, args, training_priors=None):
         args.lr = args.blr * eff_batch_size / 256
 
     no_weight_decay_list = model.no_weight_decay()
-    
-    if cfg['linprob'] and not cfg['model']['omnivore_included']:
-        model.head = torch.nn.Sequential(torch.nn.BatchNorm1d(model.head.in_features, affine=False, eps=1e-6), model.head)
-        no_weight_decay_list = lrd.linprob_parse(model, no_weight_decay_list)
-    elif cfg['linprob'] and cfg['model']['omnivore_included']:
-        model.late_fusion = torch.nn.Sequential(torch.nn.BatchNorm1d(model.late_fusion.in_features, affine=False, eps=1e-6), model.late_fusion)
-        no_weight_decay_list = lrd.linprob_parse_omni_late_fusion(model, no_weight_decay_list)
-    # elif cfg['linprob'] and cfg['model']['omnivore_included']:
-    #     model.omni_classifier = torch.nn.Sequential(torch.nn.BatchNorm1d(model.omni_classifier.in_features, affine=False, eps=1e-6), model.omni_classifier)
-    #     no_weight_decay_list = lrd.linprob_parse_omni(model, no_weight_decay_list)
+
+    if not is_multimodal:
+        if args.interfuse:
+            # model.head = torch.nn.Sequential(torch.nn.BatchNorm1d(model.head.in_features, affine=False, eps=1e-6), model.head)
+            if cfg['linprob']:
+                no_weight_decay_list = lrd.linprob_parse_interfusion(model, no_weight_decay_list)
+
+        elif not cfg['model']['omnivore_included']:
+            model.head = torch.nn.Sequential(torch.nn.BatchNorm1d(model.head.in_features, affine=False, eps=1e-6), model.head)
+            if cfg['linprob']:
+                no_weight_decay_list = lrd.linprob_parse(model, no_weight_decay_list)
+
+        elif cfg['model']['omnivore_included']:
+            model.head = torch.nn.Sequential(torch.nn.BatchNorm1d(model.head.in_features, affine=False, eps=1e-6), model.head)
+            model.omni_classifier = torch.nn.Sequential(torch.nn.BatchNorm1d(model.omni_classifier.in_features, affine=False, eps=1e-6), model.omni_classifier)
+            if  cfg['linprob']:
+                no_weight_decay_list = lrd.linprob_parse_omni_late_fusion(model, no_weight_decay_list)
 
     param_groups = lrd.param_groups_lrd(model, args.weight_decay,
-        no_weight_decay_list=model.no_weight_decay(),
+        no_weight_decay_list=no_weight_decay_list,
         layer_decay=args.layer_decay
     )
 
@@ -292,18 +324,18 @@ def load_train_objs(cfg, args, training_priors=None):
         # optimizer = LARS(model.head.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=0.9)
         optimizer = torch.optim.SGD(param_groups, lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
     else:
-        optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
+        optimizer = torch.optim.AdamW(param_groups, lr=args.lr, weight_decay=args.weight_decay)
 
     # loss_scaler = NativeScaler()
     mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
 
     if args.use_soft:
-        criterion = SoftTargetCrossEntropy() 
-    elif mixup_active:
-        if training_priors is not None:
-            criterion = BCEWithLogitsLoss(weight=training_priors) # works better
-        else:
-            criterion = BCEWithLogitsLoss()
+        criterion = SoftTargetCrossEntropy()
+    # elif mixup_active:
+    #     if training_priors is not None:
+    #         criterion = BCEWithLogitsLoss(weight=training_priors) # works better
+    #     else:
+    #         criterion = BCEWithLogitsLoss()
     else:
         if training_priors is not None:
             criterion = CrossEntropyLoss(weight=training_priors, label_smoothing=args.smoothing) # works better
@@ -318,6 +350,7 @@ if __name__ == "__main__":
     parent_args.add_argument("--nodes", type=int, required=True)
     parent_args.add_argument("--gpus_per_node", type=int, required=True)
     parent_args.add_argument("--label_balance", action="store_true")
+    parent_args.add_argument("--interfuse", action="store_true", default=False)
     parent_args.set_defaults(label_balance=False)
     args = parent_args.parse_args()
     main(args)

@@ -109,7 +109,7 @@ def gen_TSNE(embeddings: np.ndarray, labels: np.ndarray, n_components: int = 2, 
     """
     Generate TSNE embeddings from the input embeddings.
     """
-    tsne = TSNE(n_components=n_components, perplexity=30, n_iter=300, random_state=42)
+    tsne = TSNE(n_components=n_components, metric='cosine', perplexity=30, n_iter=300, random_state=42)
     tsne_embeddings = tsne.fit_transform(embeddings)
 
     return tsne_embeddings

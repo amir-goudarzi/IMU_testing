@@ -1,0 +1,3 @@
+Split 1 / 3
+Load pre-trained checkpoint from: reports/experiments/audio_mae/128x320/wear_ssl/2d/split_1/mask_ratio{0.9}_mae_vit_base_patch16/accelerator_state
+<All keys matched successfully>

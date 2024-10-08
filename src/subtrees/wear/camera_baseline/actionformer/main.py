@@ -108,7 +108,7 @@ def run_actionformer(val_sbjs, cfg, ckpt_folder, ckpt_freq, resume, rng_generato
         model, train_loader, val_loader, optimizer, scheduler
     )
 
-    print("Number of learnable parameters for ActionFormer: {}".format(sum(p.numel() for p in model.module.parameters() if p.requires_grad)))
+    print("Number of learnable parameters for ActionFormer: {}".format(sum(p.numel() for p in model.parameters() if p.requires_grad)))
 
     # resume from a checkpoint?
     if resume:

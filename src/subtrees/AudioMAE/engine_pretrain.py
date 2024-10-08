@@ -103,6 +103,25 @@ def train_one_epoch(model: torch.nn.Module,
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
+@torch.no_grad()
+def evaluate(model, data_loader, accelerator: accelerate.Accelerator, task_name, epoch, args):
+    model.eval()
+    metric_logger = misc.MetricLogger(delimiter="  ")
+    header = 'Test:'
+    print_freq = 20
+
+    eval_forward = train_fn(task_name)
+
+    for samples in metric_logger.log_every(data_loader, print_freq, header):
+        loss_value, _ = eval_forward(model, accelerator.device, samples, accelerator, args)
+        metric_logger.update(loss=loss_value)
+
+    # gather the stats from all processes
+    metric_logger.synchronize_between_processes()
+
+    print("Averaged stats:", metric_logger)
+    accelerator.log({'valid_loss': metric_logger.loss.global_avg}, step=epoch)
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 def train_fn(task_name):
     if task_name == "imu_omnivore":

@@ -8,12 +8,14 @@ import torch.multiprocessing as mp
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group, barrier
+
 import os
 import sys
 import json
 
 from copy import deepcopy
 from accelerate import Accelerator, GradScalerKwargs
+from safetensors.torch import load_file
 
 import timm.optim.optim_factory as optim_factory
 
@@ -22,7 +24,7 @@ from utils.os_utils import load_config
 sys.path.append('.')
 sys.path.append('..')
 sys.path.append(os.path.join('submodules', 'AudioMAE'))
-from subtrees.AudioMAE.engine_pretrain import train_one_epoch
+from subtrees.AudioMAE.engine_pretrain import train_one_epoch, evaluate
 from subtrees.AudioMAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
 from subtrees.AudioMAE.util.misc import AcceleratorScalerWithGradNormCount as AcceleratorScaler
 import subtrees.AudioMAE.util.misc as misc
@@ -40,8 +42,11 @@ def main(args):
     # Check to choose if you want to use the SummaryWriter (Tensorboard) or not.
     # Don't use it if you want to log with wandb.
 
-    dataloader, model, optimizer = load_train_objs(cfg, args)
-
+    train_loader, val_loader, model, optimizer = load_train_objs(cfg, args)
+    if args.resume:
+            checkpoint =  load_file(os.path.join(args.resume, 'model.safetensors'))
+            model.load_state_dict(checkpoint)
+    
     kwargs = GradScalerKwargs()
     accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs], log_with="wandb")
     device = accelerator.device
@@ -58,12 +63,18 @@ def main(args):
     accelerator.init_trackers(f"{cfg['task_name']}_pretrain_{args.dataset}", config=config, init_kwargs={"wandb":{"name":f"mask_ratio={args.mask_ratio}"}})
     # loss_scaler = AcceleratorScaler(accelerator=accelerator)
     loss_scaler = None
-    dataloader, model, optimizer = accelerator.prepare(dataloader, model, optimizer)
+    train_loader, val_loader, model, optimizer = accelerator.prepare(train_loader, val_loader, model, optimizer)
 
+
+    if args.resume:
+        evaluate(model, val_loader, accelerator=accelerator, task_name=cfg['task_name'], epoch=31, args=args)
+        accelerator.end_training()
+        return
+    
     for epoch in range(args.epochs):
         train_stats = train_one_epoch(
             model,
-            dataloader,
+            train_loader,
             optimizer,
             device,
             epoch,
@@ -102,25 +113,43 @@ def load_train_objs(cfg, args):
         **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
     )
     else:
-        cfg_args = {
+        cfg_args_train = {
             **cfg['dataset'],
             **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type],
             "task_name": cfg['task_name']
         }
+        cfg_args_val = {
+            **cfg['dataset_val'],
+            **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type],
+            "task_name": cfg['task_name']
+        }
+
         train_set = make_dataset(
             name=args.dataset,
             is_pretrain=False,
-            **cfg_args
+            **cfg_args_train
             # task_name = cfg['task_name'],
             # preload=True,
             # **cfg['dataset'],
             # **cfg['spectrogram_params'][f'sec_{args.seconds}'][args.matrix_type]
         )
+        val_set = make_dataset(
+            name=args.dataset,
+            is_pretrain=False,
+            **cfg_args_val
+        )
 
-    dataloader = DataLoader(
+    train_loader = DataLoader(
         train_set,
         batch_size=args.batch_size,
         shuffle=True,
+        pin_memory=True,
+        num_workers=args.num_workers,
+    )
+    val_loader = DataLoader(
+        val_set,
+        batch_size=args.batch_size,
+        shuffle=False,
         pin_memory=True,
         num_workers=args.num_workers,
     )
@@ -164,7 +193,7 @@ def load_train_objs(cfg, args):
     # loss_scaler = NativeScaler()
     # loss_scaler = AcceleratorScaler(accelerator=accelerator)
 
-    return dataloader, model, optimizer
+    return train_loader, val_loader, model, optimizer
 
 if __name__ == "__main__":
     parent_args = get_args_parser()

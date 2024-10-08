@@ -114,3 +114,16 @@ def linprob_parse_omni_late_fusion(model, no_weight_decay_list):
         p.requires_grad = True
         
     return no_weight_decay_list
+
+def linprob_parse_interfusion(model, no_weight_decay_list):
+    """
+    Parse the model to get the linear probe layer
+    """
+    for _, p in model.named_parameters():
+        p.requires_grad = False
+    for _, p in model.head.named_parameters():
+        p.requires_grad = True
+    for _, p in model.interfuse.named_parameters():
+        p.requires_grad = True
+        
+    return no_weight_decay_list

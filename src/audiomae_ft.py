@@ -258,7 +258,7 @@ def modeling(
 
     return model
 
-def load_model(finetune, eval, model, global_pool=True, contains_omni=False):
+def load_model(finetune, eval, model, global_pool=True, contains_omni=False, args=None):
     if finetune:
         # accelerator.load_state(finetune)
         checkpoint_model = load_file(os.path.join(finetune, 'model.safetensors'))
@@ -276,12 +276,20 @@ def load_model(finetune, eval, model, global_pool=True, contains_omni=False):
 
         missing_keys = {'head.weight', 'head.bias'}
 
-        if contains_omni:
+        if args.interfuse:
+            missing_keys.add('interfuse.0.weight')
+            missing_keys.add('interfuse.0.bias')
+            missing_keys.add('interfuse.1.weight')
+            missing_keys.add('interfuse.1.bias')
+            missing_keys.add('interfuse.1.running_mean')
+            missing_keys.add('interfuse.1.running_var')
+
+        elif contains_omni:
             missing_keys.add('omni_classifier.weight')
             missing_keys.add('omni_classifier.bias')
             # TODO: for concatenated logits
-            missing_keys.add('late_fusion.weight')
-            missing_keys.add('late_fusion.bias')
+            missing_keys.add('late_fusion.1.weight')
+            missing_keys.add('late_fusion.1.bias')
 
         if global_pool:
             missing_keys.add('fc_norm.weight')

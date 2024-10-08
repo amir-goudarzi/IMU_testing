@@ -22,7 +22,8 @@ from .util.patch_embed import PatchEmbed_new, PatchEmbed3D_new
 class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
     """ Vision Transformer with support for global average pooling
     """
-    def __init__(self, global_pool=False, mask_2d=True, use_custom_patch=False, classification=True, omnivore_included=False, wear=False, **kwargs):
+    def __init__(self, global_pool=False, mask_2d=True, use_custom_patch=False, classification=True,
+                 omnivore_included=False, interfuse=False, dropout=0.4, **kwargs):
         super(VisionTransformer, self).__init__(**kwargs)
         self.omnivore_included = omnivore_included
 
@@ -35,14 +36,24 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         self.mask_2d = mask_2d
         self.use_custom_patch = use_custom_patch
         self.classification = classification
-
-        if self.omnivore_included:
-            self.omni_classifier = nn.Linear(1536, self.num_classes)
-            self.late_fusion = nn.Linear(self.num_classes * 2, self.num_classes)
-
-        self.wear = wear
-        if not self.classification:
-            del self.head  # remove the original head
+        self.intermediate_fusion = interfuse
+        
+        if classification:
+            if self.intermediate_fusion:
+                self.interfuse = nn.Sequential(
+                    nn.Linear(1536 + self.embed_dim, self.embed_dim),
+                    nn.BatchNorm1d(self.embed_dim, affine=True),
+                    nn.GELU(),
+                    nn.Dropout(p=dropout, inplace=False),)
+            elif self.omnivore_included:
+                self.omni_classifier = nn.Linear(1536, self.num_classes)
+                self.late_fusion = nn.Sequential(
+                    nn.Dropout(p=0.3, inplace=True),
+                    nn.Linear(self.num_classes * 2, self.num_classes))
+            
+            self.classifier_fn = self.classifier()
+        # else:
+        #     del self.head  # remove the original head
         num_heads=12
         depth=12
         mlp_ratio=4
@@ -286,6 +297,40 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         return outcome
 
+    def classifier(self):
+        def late_fusion(x):
+            x, vid = x
+            x = self.head(x)
+            vid = self.omni_classifier(vid)
+            return self.late_fusion(torch.cat((x, vid), dim=1))
+        
+        def late_fusion_v2(x):
+            x, vid = x
+            x = torch.cat((x, vid), dim=1)
+            return self.late_fusion(x)
+        
+        def interfusion(x):
+            x, vid = x
+            x = self.interfuse(torch.cat((x, vid), dim=1))
+            return self.head(x)
+        
+        def unimodal(x):
+            return self.head(x)
+        
+        def features(x):
+            return x
+        
+        if not self.classification:
+            return features
+        
+        if self.omnivore_included:
+            if self.intermediate_fusion:
+                return interfusion
+            else:
+                return late_fusion_v2
+        else:
+            return unimodal
+        
     def forward(self, x, v=None, mask_t_prob=0.0, mask_f_prob=0.0):
         if self.omnivore_included:
             (x, vid) = x
@@ -294,17 +339,9 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             x = self.forward_features_mask(x, mask_t_prob=mask_t_prob, mask_f_prob=mask_f_prob)
         else:
             x = self.forward_features(x)
-
-        if self.classification:
-            x = self.head(x)
-            if self.omnivore_included:
-                vid = self.omni_classifier(vid)
-                x = torch.cat((x, vid), dim=1)
-                x = self.late_fusion(x)
-            # if self.omnivore_included:
-            #     vid = self.omni_classifier(vid)
-            #     x = x + vid
-        return x
+        if self.omnivore_included:
+            x = (x, vid)
+        return self.classifier_fn(x)
     
 
 def vit_small_patch8(**kwargs):

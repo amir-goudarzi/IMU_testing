@@ -2,6 +2,7 @@
 
 dataset=egoexo4d
 matrix_type="128x320"
+# experiments_dir=./reports/experiments/audio_mae/$matrix_type/$dataset/intermediate_fusion/linprob
 experiments_dir=./reports/experiments/audio_mae/$matrix_type/$dataset/imu_omni/linprob
 patch=16
 model=vit_base_patch$patch
@@ -10,6 +11,7 @@ gpus_per_node=2
 MASTER_PORT=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
 
 for mask_ratio in 0.6 0.7 0.8 0.9
+# for mask_ratio in 0.7
 do
     accelerate launch --main_process_port $MASTER_PORT src/dist_ft_accelerate.py \
         --log_dir $experiments_dir/mask_ratio{$mask_ratio}_$model \
@@ -19,8 +21,8 @@ do
         --model $model \
         --epochs 30 \
         --blr 0.001 \
-        --weight_decay 0.0001 \
-        --batch_size 256 \
+        --weight_decay 0.001 \
+        --batch_size 512 \
         --warmup_epochs 4 \
         --mask_t_prob $mask_ratio \
         --mixup 0.0 \
@@ -28,5 +30,6 @@ do
         --matrix_type 128x320 \
         --seconds 2 \
         --nodes $nodes \
-        --gpus_per_node $gpus_per_node
+        --gpus_per_node $gpus_per_node \
+        --interfuse
 done

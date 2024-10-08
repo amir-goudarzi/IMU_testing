@@ -1,4 +1,6 @@
 #!/bin/bash
+export NCCL_P2P_DISABLE=1
+export NCCL_IB_DISABLE=1
 
 backwards=../../..
 # config=configs/120_frames_60_stride/actionformer_mae.yaml

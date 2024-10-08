@@ -46,7 +46,8 @@ def train_one_epoch(
         log_writer=None | SummaryWriter,
         accelerator=None | accelerate.Accelerator,
         args=None,
-        task_name='imu'
+        task_name='imu',
+        num_classes=68
     ):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -80,7 +81,7 @@ def train_one_epoch(
                     samples = (imu, omni)
 
             else:
-                targets = one_hot(targets, model.module.num_classes).to(torch.float32)
+                targets = one_hot(targets, num_classes).to(torch.float32)
 
             outputs, loss = train_forward(model, samples, targets, criterion, accelerator, mask_t_prob=args.mask_t_prob, mask_f_prob=args.mask_f_prob)
             if loss_scaler is None:

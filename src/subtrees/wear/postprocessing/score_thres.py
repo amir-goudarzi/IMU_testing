@@ -5,18 +5,37 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
 import seaborn as sns
+# pd.set_option('future.no_silent_downcasting', True)
+
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from utils import ANETdetection, convert_segments_to_samples
 
+mean_df = None
+
 # postprocessing parameters
-path_to_preds = ['path/to/preds/to/be/analysed']
+path_to_preds = [
+    '../logs/actionformer/single_gpu/camera',
+    '../logs/actionformer/single_gpu/inertial',
+    '../logs/actionformer/single_gpu/combined',
+    '../logs/actionformer/single_gpu/inertial_mae',
+    '../logs/actionformer/single_gpu/combined_mae',
+                 ]
+path_to_preds = [
+    '../logs/tridet/single_gpu/camera',
+    '../logs/tridet/single_gpu/inertial',
+    '../logs/tridet/single_gpu/combined',
+    '../logs/tridet/single_gpu/inertial_mae',
+    '../logs/tridet/single_gpu/combined_mae',
+                 ]
 seeds = [1, 2, 3]
 score_thres = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25]
 sampling_rate = 50
 json_files = [
-    'data/wear/annotations/wear_split_1.json', 
-    'data/wear/annotations/wear_split_2.json', 
-    'data/wear/annotations/wear_split_3.json'
+    '/data2/WEAR/annotations/wear_split_1.json', 
+    '/data2/WEAR/annotations/wear_split_2.json', 
+    '/data2/WEAR/annotations/wear_split_3.json'
     ]
 
 for path in path_to_preds:
@@ -41,7 +60,7 @@ for path in path_to_preds:
                 v_data = np.empty((0, 12 + 2))
                 v_seg = pd.read_csv(os.path.join(path, 'seed_' + str(seed), 'unprocessed_results/v_seg_wear_split_{}.csv'.format(int(i) + 1, seed)), index_col=None)
                 for sbj in val_sbjs:
-                    data = pd.read_csv(os.path.join('data/wear/raw/inertial', sbj + '.csv'), index_col=False).replace({"label": label_dict}).fillna(0).to_numpy()
+                    data = pd.read_csv(os.path.join('/data2/WEAR/raw/inertial', sbj + '.csv'), index_col=False).replace({"label": label_dict}).fillna(0).to_numpy()
                     v_data = np.append(v_data, data, axis=0)
             
                 print("Converting to Samples....")
@@ -73,30 +92,58 @@ for path in path_to_preds:
                         'fontsize': 16,
                     })
                 pred_name = path.split('/')[-2]
-                _.savefig(pred_name + ".pdf")
-                np.save(pred_name, all_preds)
+                _.savefig(os.path.join(path, pred_name + ".pdf"))
+                np.save(os.path.join(path, pred_name), all_preds)
 
         print("Prediction for {} with threshold {}:".format(path_to_preds, f))
         print("Individual mAP:")
-        print(np.around(np.mean(all_mAP, axis=0) / len(json_files), 4) * 100)
+        individual_mAP = np.around(np.mean(all_mAP, axis=0) / len(json_files), 4) * 100
+        print(individual_mAP)
 
         print("Average mAP:")
-        print("{:.4} (+/-{:.4})".format(np.mean(all_mAP) / len(json_files) * 100, np.std(np.mean(all_mAP, axis=1) / len(json_files)) * 100))
+        average_mAP = np.mean(all_mAP) / len(json_files) * 100
+        print("{:.4} (+/-{:.4})".format(average_mAP, np.std(np.mean(all_mAP, axis=1) / len(json_files)) * 100))
 
         print("Individual Precision:")
         print(np.around(np.mean(all_prec, axis=0) / len(json_files), 4) * 100)
 
         print("Average Precision:")
-        print("{:.4} (+/-{:.4})".format(np.mean(all_prec) / len(json_files) * 100, np.std(np.mean(all_prec, axis=1) / len(json_files)) * 100))
+        avg_precision = np.mean(all_prec) / len(json_files) * 100
+        print("{:.4} (+/-{:.4})".format(avg_precision, np.std(np.mean(all_prec, axis=1) / len(json_files)) * 100))
 
         print("Individual Recall:")
         print(np.around(np.mean(all_recall, axis=0) / len(json_files), 4) * 100)
 
         print("Average Recall:")
-        print("{:.4} (+/-{:.4})".format(np.mean(all_recall) / len(json_files) * 100, np.std(np.mean(all_recall, axis=1) / len(json_files)) * 100))
+        avg_recall = np.mean(all_recall) / len(json_files) * 100
+        print("{:.4} (+/-{:.4})".format(avg_recall, np.std(np.mean(all_recall, axis=1) / len(json_files)) * 100))
 
         print("Individual F1:")
         print(np.around(np.mean(all_f1, axis=0) / len(json_files), 4) * 100)
 
         print("Average F1:")
-        print("{:.4} (+/-{:.4})".format(np.mean(all_f1) / len(json_files) * 100, np.std(np.mean(all_f1, axis=1) / len(json_files)) * 100))
+        avg_f1 = np.mean(all_f1) / len(json_files) * 100
+        print("{:.4} (+/-{:.4})".format(avg_f1, np.std(np.mean(all_f1, axis=1) / len(json_files)) * 100))
+        
+        tmp_df = pd.DataFrame({
+            'model': pred_name + path.split('/')[-1],
+            'threshold': f,
+            'P': avg_precision,
+            'R': avg_recall,
+            'F1': avg_f1,
+            'mAP@0.3': individual_mAP[0],
+            'mAP@0.4': individual_mAP[1],
+            'mAP@0.5': individual_mAP[2],
+            'mAP@0.6': individual_mAP[3],
+            'mAP@0.7': individual_mAP[4],
+            'avg_mAP': average_mAP
+        }, index=[0])
+
+        if mean_df is None:
+            mean_df = tmp_df
+        else:
+            mean_df = pd.concat([mean_df, tmp_df])
+
+    print(mean_df)
+    mean_df.to_csv(os.path.join(path, pred_name + "_mean.csv"))
+    mean_df = None

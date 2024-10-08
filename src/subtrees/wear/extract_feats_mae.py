@@ -42,6 +42,10 @@ from audiomae_pretrain import modeling
 from utils.os_utils import load_config
 from features.imu_preprocessing import SpectrogramsGenerator
 
+# Disable NCCL P2P and IB
+os.environ["NCCL_P2P_DISABLE"] = "1"
+os.environ["NCCL_IB_DISABLE"] = "1"
+
 
 def epoch(args, specgram_transform, model, train_loader, config, accelerator, dummy_model, training):
     seconds_bin = args.seconds * 50 * 4 * 3 # 2 seconds * 50 Hz * 4 sensors * 3 channels
