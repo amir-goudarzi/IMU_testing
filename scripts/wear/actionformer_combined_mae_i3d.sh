@@ -4,9 +4,9 @@ export NCCL_IB_DISABLE=1
 
 backwards=../../..
 # config=configs/120_frames_60_stride/actionformer_mae.yaml
-config=./configs/120_frames_60_stride/actionformer_combined.yaml
+config=./configs/120_frames_60_stride/actionformer_combined_mae_i3d_pt.yaml
 eval_type=split
-run_id=actionformer_combined
+run_id=actionformer_combined_mae_i3d_pt
 seconds=2
 patch=16
 model=vit_base_patch$patch
@@ -24,5 +24,6 @@ do
         --eval_type $eval_type \
         --run_id $run_id \
         --seconds $seconds \
-        --seed $seed
+        --seed $seed \
+        --mask_ratio $pretrain_mask_ratio
 done

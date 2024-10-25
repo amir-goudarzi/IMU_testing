@@ -15,19 +15,31 @@ from utils import ANETdetection, convert_segments_to_samples
 mean_df = None
 
 # postprocessing parameters
+# path_to_preds = [
+#     '../logs/actionformer/single_gpu/camera',
+#     '../logs/actionformer/single_gpu/inertial',
+#     '../logs/actionformer/single_gpu/combined',
+#     '../logs/actionformer/single_gpu/inertial_mae',
+#     '../logs/actionformer/single_gpu/combined_mae',
+#                  ]
 path_to_preds = [
-    '../logs/actionformer/single_gpu/camera',
-    '../logs/actionformer/single_gpu/inertial',
-    '../logs/actionformer/single_gpu/combined',
-    '../logs/actionformer/single_gpu/inertial_mae',
-    '../logs/actionformer/single_gpu/combined_mae',
-                 ]
-path_to_preds = [
-    '../logs/tridet/single_gpu/camera',
-    '../logs/tridet/single_gpu/inertial',
-    '../logs/tridet/single_gpu/combined',
-    '../logs/tridet/single_gpu/inertial_mae',
-    '../logs/tridet/single_gpu/combined_mae',
+    # '../logs/tridet/single_gpu/camera',
+    # '../logs/tridet/single_gpu/inertial',
+    # '../logs/tridet/single_gpu/combined',
+    # '../logs/tridet/single_gpu/inertial_mae',
+    # '../logs/tridet/single_gpu/combined_mae',
+    # '../logs/actionformer/combined_mae_scratch_fixed',
+    # '../logs/actionformer/inertial_mae_scratch_fixed',
+    # '../logs/tridet/combined_mae_fixed',
+    # '../logs/tridet/inertial_mae_fixed',
+    # '../logs/tridet/combined_mae_scratch_fixed',
+    # '../logs/tridet/inertial_mae_scratch_fixed',
+    # '../logs/actionformer/combined_mae_10epochs',
+    # '../logs/actionformer/inertial_mae_10epochs',
+    '../logs/actionformer/inertial_mae_i3d_pt',
+    '../logs/actionformer/combined_mae_i3d_pt',
+    '../logs/tridet/inertial_mae_i3d_pt',
+    '../logs/tridet/combined_mae_i3d_pt',
                  ]
 seeds = [1, 2, 3]
 score_thres = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25]

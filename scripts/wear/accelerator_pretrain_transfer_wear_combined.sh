@@ -3,7 +3,7 @@
 dataset=wear_ssl
 matrix_type="128x320"
 patch=16
-experiments_dir=./reports/experiments/audio_mae/$matrix_type/$dataset/2d/bugfix_transfer/equal_epochs
+experiments_dir=./reports/experiments/audio_mae/$matrix_type/$dataset/2d/imu_i3d/fromscratch
 # experiments_dir=./reports/experiments/audio_mae/$matrix_type/$dataset/2d/bugfix_transfer/pt_fromscratch
 # experiments_dir=./reports/experiments/audio_mae/$matrix_type/$dataset/2d/pt_fromscratch
 model=mae_vit_base_patch$patch
@@ -16,8 +16,7 @@ do
     accelerate launch --main_process_port $MASTER_PORT src/dist_pretrain_accelerate.py \
         --log_dir $experiments_dir/split_$split/mask_ratio{$mask_ratio}_$model/ \
         --output_dir $experiments_dir/split_$split/mask_ratio{$mask_ratio}_$model/ \
-        --config ./configs/IMU-MAE/WEAR/split_$split/wear_inertial_pt.yaml \
-        --resume ./reports/experiments/audio_mae/128x320/egoexo4d/imu_omni/pretrain/mask_ratio{$mask_ratio}_mae_vit_base_patch16/accelerator_state \
+        --config ./configs/IMU-MAE/WEAR/split_$split/wear_combined_pt.yaml \
         --split $split \
         --model $model \
         --epochs 10 \

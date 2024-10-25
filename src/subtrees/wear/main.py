@@ -61,7 +61,7 @@ def main(args):
 
     feats_path = None
 
-    if config['dataset']['feat_folder'].endswith('mae'):
+    if config['dataset']['feat_folder'].endswith('mae') or config['dataset']['feat_folder'].endswith('fromscratch') or config['dataset']['feat_folder'].endswith('imu_i3d'):
         splits = [config['anno_json'][i].split('wear_')[1].split('.')[0] for i in range(len(config['anno_json']))]
         feats_path = [
             os.path.join(config['dataset']['feat_folder'], splits[i], 'mask_ratio{' + str(args.mask_ratio) + '}_' + 'mae_vit_base_patch16') 

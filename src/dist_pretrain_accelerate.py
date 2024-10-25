@@ -31,7 +31,6 @@ import subtrees.AudioMAE.util.misc as misc
 from torch.utils.tensorboard import SummaryWriter
 
 from models.utils_mae import load_vit3d_model, load_mae_model_2d
-from utils.os_utils import load_config
 
 from data.dataset import make_dataset
 
@@ -43,9 +42,6 @@ def main(args):
     # Don't use it if you want to log with wandb.
 
     train_loader, val_loader, model, optimizer = load_train_objs(cfg, args)
-    if args.resume:
-            checkpoint =  load_file(os.path.join(args.resume, 'model.safetensors'))
-            model.load_state_dict(checkpoint)
     
     kwargs = GradScalerKwargs()
     accelerator = Accelerator(mixed_precision="fp16", kwargs_handlers=[kwargs], log_with="wandb")
@@ -66,10 +62,10 @@ def main(args):
     train_loader, val_loader, model, optimizer = accelerator.prepare(train_loader, val_loader, model, optimizer)
 
 
-    if args.resume:
-        evaluate(model, val_loader, accelerator=accelerator, task_name=cfg['task_name'], epoch=31, args=args)
-        accelerator.end_training()
-        return
+    # if args.resume:
+    #     evaluate(model, val_loader, accelerator=accelerator, task_name=cfg['task_name'], epoch=31, args=args)
+    #     accelerator.end_training()
+    #     return
     
     for epoch in range(args.epochs):
         train_stats = train_one_epoch(
@@ -103,7 +99,8 @@ def main(args):
     accelerator.end_training()
 
 def load_train_objs(cfg, args):
-
+    train_set = val_set = None
+    
     if args.dataset == 'wear_ssl':
         # cfg['dataset']['mean_std_path'] = cfg['mean_std_path']
         train_set = make_dataset(
@@ -146,13 +143,15 @@ def load_train_objs(cfg, args):
         pin_memory=True,
         num_workers=args.num_workers,
     )
-    val_loader = DataLoader(
-        val_set,
-        batch_size=args.batch_size,
-        shuffle=False,
-        pin_memory=True,
-        num_workers=args.num_workers,
-    )
+    val_loader = None
+    if val_set:
+        val_loader = DataLoader(
+            val_set,
+            batch_size=args.batch_size,
+            shuffle=False,
+            pin_memory=True,
+            num_workers=args.num_workers,
+        )
 
     if args.dataset == 'wear_ssl':
         # model = load_vit3d_model(

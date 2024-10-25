@@ -89,7 +89,7 @@ def epoch(args, specgram_transform, model, train_loader, config, accelerator, du
 
         b = 1
         batched_inputs = torch.tensor(features[:, :seconds_bin]).nan_to_num().to(torch.float32)
-
+        dummy_i3d = torch.rand((1, 2048))
         # forward the model (wo. grad)
         for i, vid in enumerate(batched_inputs):
             with accelerator.autocast():
@@ -98,17 +98,26 @@ def epoch(args, specgram_transform, model, train_loader, config, accelerator, du
                 vid = vid.unsqueeze(0).reshape(1, 12, 2 * 50)
                 vid = map_fn(vid)
                 _, c, h, w = vid.shape
+                
 
                 # TODO: uncomment for vit3d
                 # vid = vid.reshape(b, 3, 4, h, w)
 
+                if args.imu_i3d:
+                    vid = (vid, dummy_i3d)
                 with torch.no_grad():
                     output, _, _, _ = model(vid, mask_ratio=0.0)
                     output = output.mean(dim = 1)
             
                 feat_tot[i, :768] = output.squeeze(0).cpu().numpy()
 
-        save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        if args.fromscratch:
+            save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        elif args.imu_i3d:
+            save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        else:
+            save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+            
         if not os.path.exists(save_path_mae):
             os.makedirs(save_path_mae)
         
@@ -211,9 +220,16 @@ def main(args):
 def combined_to_inertial(args):
     config = load_config(args.config)
 
-    combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
- 
-    save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    
+    if args.fromscratch:
+        combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    elif args.imu_i3d:
+        combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    else:
+        combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
 
     for filename in os.listdir(combined_path_mae):
         if os.path.isdir(os.path.join(combined_path_mae, filename)):
@@ -224,6 +240,32 @@ def combined_to_inertial(args):
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         np.save(os.path.join(save_path, filename), features)
+
+def inertial_to_combined(args):
+    config = load_config(args.config)
+    baseline_path = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    if args.fromscratch:
+        inertial_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join(config['dataset']['feat_folder'], 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    elif args.imu_i3d:
+        inertial_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    else:
+        inertial_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    
+    for filename in os.listdir(inertial_path):
+        if os.path.isdir(os.path.join(inertial_path, filename)):
+            continue
+        inertial_features = np.load(os.path.join(inertial_path, filename))
+        combined_features = np.load(os.path.join(baseline_path, filename))
+
+        combined_features[:, :768] = inertial_features
+
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        np.save(os.path.join(save_path, filename), combined_features)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='WEAR baseline experiments')
@@ -236,12 +278,17 @@ if __name__ == '__main__':
     parser.add_argument('--finetune', type=str, default='', help='path to finetune model')
     parser.add_argument('--seconds', type=int, default=2)
     parser.add_argument('--matrix_type', type=str, default='128x320')
-    parser.add_argument('--mask_ratio', type=float, default=0.8)
+    parser.add_argument('--mask_ratio', type=float, default=0.9)
     parser.add_argument('--split', type=int, default=1)
+    parser.add_argument('--fromscratch', action='store_true', default=False)
+    parser.add_argument('--imu_i3d', action='store_true', default=False)
     parser.add_argument('--combined_to_inertial', action='store_true', default=False)
+    parser.add_argument('--inertial_to_combined', action='store_true', default=False)
 
     args = parser.parse_args()
-    if args.combined_to_inertial:
+    if args.combined_to_inertial and not args.inertial_to_combined:
         combined_to_inertial(args)
+    elif args.inertial_to_combined and not args.combined_to_inertial:
+        inertial_to_combined(args)
     else:
         main(args)

@@ -6,8 +6,9 @@ mean_std: {
 
 dataset: {
   src_dir: "/data2/WEAR",
-  annotations: "./data/WEAR/annotations/crossval_refactored",
-  filename: "wear_split_1.pkl"
+  # annotations: "./data/WEAR/annotations/crossval_refactored",
+  annotations: "/data2/WEAR/annotations",
+  filename: "wear_split_1.json"
 }
 
 mean_std_path: './data/WEAR/mean_std/split_1'

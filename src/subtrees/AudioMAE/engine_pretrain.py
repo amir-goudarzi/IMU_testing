@@ -124,7 +124,7 @@ def evaluate(model, data_loader, accelerator: accelerate.Accelerator, task_name,
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 def train_fn(task_name):
-    if task_name == "imu_omnivore":
+    if task_name == "imu_omnivore" or task_name == "imu_i3d":
         return imu_omnivore
     elif task_name == "imu":
         return imu
