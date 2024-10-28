@@ -115,6 +115,10 @@ def epoch(args, specgram_transform, model, train_loader, config, accelerator, du
             save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
         elif args.imu_i3d:
             save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        elif args.imu:
+            save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        elif args.imu_i3d_fromscratch:
+            save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
         else:
             save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
             
@@ -227,6 +231,12 @@ def combined_to_inertial(args):
     elif args.imu_i3d:
         combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'split_' + str(args.split), args.finetune.split('/')[-2])
         save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    elif args.imu:
+        combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    elif args.imu_i3d_fromscratch:
+        combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
     else:
         combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
         save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
@@ -250,6 +260,12 @@ def inertial_to_combined(args):
     elif args.imu_i3d:
         inertial_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'split_' + str(args.split), args.finetune.split('/')[-2])
         save_path = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    elif args.imu:
+        inertial_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d_fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    elif args.imu_i3d_fromscratch:
+        inertial_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
     else:
         inertial_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
         save_path = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
@@ -282,6 +298,7 @@ if __name__ == '__main__':
     parser.add_argument('--split', type=int, default=1)
     parser.add_argument('--fromscratch', action='store_true', default=False)
     parser.add_argument('--imu_i3d', action='store_true', default=False)
+    parser.add_argument('--imu_i3d_fromscratch', action='store_true', default=False)
     parser.add_argument('--combined_to_inertial', action='store_true', default=False)
     parser.add_argument('--inertial_to_combined', action='store_true', default=False)
 

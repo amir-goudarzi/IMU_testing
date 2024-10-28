@@ -127,3 +127,20 @@ def linprob_parse_interfusion(model, no_weight_decay_list):
         p.requires_grad = True
         
     return no_weight_decay_list
+
+def wear_freeze_decoder(model, no_weight_decay_list):
+    """
+    Freeze the decoder part of the model
+    """
+    for _, p in model.named_parameters():
+        p.requires_grad = True
+    # for _, p in model.decoder_pos_embed.named_parameters():
+    #     p.requires_grad = False
+    for _, p in model.decoder_blocks.named_parameters():
+        p.requires_grad = False
+    for _, p in model.decoder_norm.named_parameters():
+        p.requires_grad = False
+    for _, p in model.decoder_pred.named_parameters():
+        p.requires_grad = False
+        
+    return no_weight_decay_list

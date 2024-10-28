@@ -80,8 +80,8 @@ def load_mae_model_2d(finetune, eval, model):
       # load pre-trained model
       del checkpoint_model['decoder_embed.weight'], checkpoint_model['decoder_embed.bias']
 
-      checkpoint_model['decoder_pred.weight'] = checkpoint_model['decoder_pred.weight'].repeat(4, 1) / 4
-      checkpoint_model['decoder_pred.bias'] = checkpoint_model['decoder_pred.bias'].repeat(4) / 4
+      checkpoint_model['decoder_pred.weight'] = checkpoint_model['decoder_pred.weight'].repeat(4, 1)
+      checkpoint_model['decoder_pred.bias'] = checkpoint_model['decoder_pred.bias'].repeat(4)
       # load pre-trained model
       msg = model.load_state_dict(checkpoint_model, strict=False)
       model.decoder_embed.apply(model._init_weights)

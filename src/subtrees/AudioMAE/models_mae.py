@@ -143,6 +143,11 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.initialize_weights()
 
+    # Stolen from timm.models.vision_transformer.VisionTransformer
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        return {'pos_embed', 'cls_token'}
+
     def initialize_weights(self):
         # initialization
         # initialize (and freeze) pos_embed by sin-cos embedding

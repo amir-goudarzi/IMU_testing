@@ -8,6 +8,7 @@ import torch.multiprocessing as mp
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group, barrier
+import subtrees.AudioMAE.util.lr_decay as lrd
 
 import os
 import sys
@@ -171,6 +172,13 @@ def load_train_objs(cfg, args):
             eval=False,
             model=model
         )
+        if args.freeze_decoder:
+            no_weight_decay_list = model.no_weight_decay()
+            no_weight_decay_list = lrd.wear_freeze_decoder(model, no_weight_decay_list)
+            # param_groups = lrd.param_groups_lrd(model, args.weight_decay,
+            #     no_weight_decay_list=no_weight_decay_list,
+            #     layer_decay=args.layer_decay
+            # )
     elif args.dataset == 'egoexo4d':
         model = modeling(
             seconds=args.seconds,
@@ -199,5 +207,6 @@ if __name__ == "__main__":
     parent_args.add_argument("--nodes", type=int, required=True)
     parent_args.add_argument("--gpus_per_node", type=int, required=True)
     parent_args.add_argument("--split", type=int, default=None)
+    parent_args.add_argument("--freeze_decoder", default=False, action='store_true')
     args = parent_args.parse_args()
     main(args)

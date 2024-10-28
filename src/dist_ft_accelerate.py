@@ -24,7 +24,7 @@ from subtrees.AudioMAE.util.misc import AcceleratorScalerWithGradNormCount as Ac
 import subtrees.AudioMAE.util.lr_decay as lrd
 from torch.utils.tensorboard import SummaryWriter
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
-
+import timm.optim.optim_factory as optim_factory
 from data.dataset import make_dataset
 
 from models.multimodal import custom_late_fusion
@@ -310,6 +310,7 @@ def load_train_objs(cfg, args, training_priors=None):
             if  cfg['linprob']:
                 no_weight_decay_list = lrd.linprob_parse_omni_late_fusion(model, no_weight_decay_list)
 
+    optim
     param_groups = lrd.param_groups_lrd(model, args.weight_decay,
         no_weight_decay_list=no_weight_decay_list,
         layer_decay=args.layer_decay

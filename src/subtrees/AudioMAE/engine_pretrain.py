@@ -20,6 +20,20 @@ from .util import lr_sched
 import accelerate
 from torch.utils.tensorboard import SummaryWriter
 
+EVAL_LAYERS = [
+    'decoder_pos_embed',
+    'decoder_pred',
+    'decoder_blocks',
+    'decoder_norm'
+]
+
+def parse_train_eval(model: torch.nn.Module):
+    model.train()
+    # model.module.decoder_pos_embed.eval()
+    [model.module.decoder_blocks[i].eval() for i in range(len(model.module.decoder_blocks))]
+    model.module.decoder_norm.eval()
+    model.module.decoder_pred.eval()
+
 
 def train_one_epoch(model: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
@@ -28,7 +42,11 @@ def train_one_epoch(model: torch.nn.Module,
                     args=None,
                     task_name=None,
                     accelerator=None | accelerate.Accelerator):
-    model.train(True)
+    if args.freeze_decoder:
+        parse_train_eval(model)
+    else:
+        model.train(True)
+
     metric_logger = misc.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', misc.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     header = 'Epoch: [{}]'.format(epoch)
