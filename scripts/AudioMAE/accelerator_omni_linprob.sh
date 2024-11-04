@@ -19,7 +19,7 @@ do
         --config ./configs/IMU-MAE/egoexo4d_accl_omni_linprob.yaml \
         --finetune ./reports/experiments/audio_mae/128x320/egoexo4d/imu_omni/pretrain/mask_ratio{$mask_ratio}_mae_$model/accelerator_state \
         --model $model \
-        --epochs 30 \
+        --epochs 12 \
         --blr 0.001 \
         --weight_decay 0.001 \
         --batch_size 512 \
@@ -30,6 +30,5 @@ do
         --matrix_type 128x320 \
         --seconds 2 \
         --nodes $nodes \
-        --gpus_per_node $gpus_per_node \
-        --interfuse
+        --gpus_per_node $gpus_per_node
 done

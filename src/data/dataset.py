@@ -1,3 +1,6 @@
+'''
+Stolen from https://github.com/mariusbock/wear, thanks! :)
+'''
 
 datasets = {}
 def register_dataset(name):

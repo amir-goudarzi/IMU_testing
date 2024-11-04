@@ -33,7 +33,8 @@ class WearDatasetSSL(Dataset):
             resizes=(128, 320),
             is_train=False,
             mean_std_path=None,
-            i3d=False
+            i3d=False,
+            rgb=False
             ):
         self.src_dir = src_dir
         self.window_size = window_size
@@ -41,6 +42,7 @@ class WearDatasetSSL(Dataset):
         self.sampling_rate = sampling_rate
         self.downsampling_rate = downsampling_rate
         self.i3d = i3d
+        self.rgb = rgb
         self.overlap_in_s = window_size / 2 if overlap_in_s is None else overlap_in_s
         self.cache = {}  # Initialize an empty cache
         self.annotations = self.__load_annotations__(os.path.join(annotations, filename))
@@ -106,7 +108,15 @@ class WearDatasetSSL(Dataset):
         def i3d_return_fn(x):
             accl, i3d = x
             return accl, i3d
-        return imu_return_fn if not self.i3d else i3d_return_fn
+        def rgb_return_fn(x):
+            accl, i3d = x
+            return accl, i3d[:1024]
+        
+        if self.i3d:
+            if self.rgb:
+                return rgb_return_fn
+            return i3d_return_fn
+        return imu_return_fn
 
     def __load_annotations__(self, annotations: os.PathLike):
         # assert os.path.isfile(annotations), f'The file {annotations} does not exist'

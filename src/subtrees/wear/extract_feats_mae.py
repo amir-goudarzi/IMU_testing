@@ -89,7 +89,10 @@ def epoch(args, specgram_transform, model, train_loader, config, accelerator, du
 
         b = 1
         batched_inputs = torch.tensor(features[:, :seconds_bin]).nan_to_num().to(torch.float32)
-        dummy_i3d = torch.rand((1, 2048))
+        if args.i3d_rgb:
+            dummy_i3d = torch.rand((1, 1024))
+        else:
+            dummy_i3d = torch.rand((1, 2048))
         # forward the model (wo. grad)
         for i, vid in enumerate(batched_inputs):
             with accelerator.autocast():
@@ -103,7 +106,7 @@ def epoch(args, specgram_transform, model, train_loader, config, accelerator, du
                 # TODO: uncomment for vit3d
                 # vid = vid.reshape(b, 3, 4, h, w)
 
-                if args.imu_i3d:
+                if args.imu_i3d or args.i3d_rgb or args.i3d_rgb_fromscratch: 
                     vid = (vid, dummy_i3d)
                 with torch.no_grad():
                     output, _, _, _ = model(vid, mask_ratio=0.0)
@@ -119,6 +122,10 @@ def epoch(args, specgram_transform, model, train_loader, config, accelerator, du
             save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu', 'split_' + str(args.split), args.finetune.split('/')[-2])
         elif args.imu_i3d_fromscratch:
             save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        elif args.i3d_rgb:
+            save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'rgb', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        elif args.i3d_rgb_fromscratch:
+            save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'rgb', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
         else:
             save_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
             
@@ -237,6 +244,12 @@ def combined_to_inertial(args):
     elif args.imu_i3d_fromscratch:
         combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
         save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    elif args.i3d_rgb:
+        combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'rgb', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'rgb', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    elif args.i3d_rgb_fromscratch:
+        combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'rgb', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'rgb', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
     else:
         combined_path_mae = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
         save_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
@@ -266,6 +279,12 @@ def inertial_to_combined(args):
     elif args.imu_i3d_fromscratch:
         inertial_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
         save_path = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    elif args.i3d_rgb:
+        inertial_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'rgb', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'rgb', 'split_' + str(args.split), args.finetune.split('/')[-2])
+    elif args.i3d_rgb_fromscratch:
+        inertial_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'imu_i3d', 'rgb', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
+        save_path = os.path.join(config['dataset']['feat_folder'], 'mae', 'imu_i3d', 'rgb', 'fromscratch', 'split_' + str(args.split), args.finetune.split('/')[-2])
     else:
         inertial_path = os.path.join('/data2/WEAR/processed/inertial_features', '120_frames_60_stride', 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
         save_path = os.path.join(config['dataset']['feat_folder'], 'mae', 'split_' + str(args.split), args.finetune.split('/')[-2])
@@ -297,8 +316,11 @@ if __name__ == '__main__':
     parser.add_argument('--mask_ratio', type=float, default=0.9)
     parser.add_argument('--split', type=int, default=1)
     parser.add_argument('--fromscratch', action='store_true', default=False)
+    parser.add_argument('--imu', action='store_true', default=False)
     parser.add_argument('--imu_i3d', action='store_true', default=False)
     parser.add_argument('--imu_i3d_fromscratch', action='store_true', default=False)
+    parser.add_argument('--i3d_rgb', action='store_true', default=False)
+    parser.add_argument('--i3d_rgb_fromscratch', action='store_true', default=False)
     parser.add_argument('--combined_to_inertial', action='store_true', default=False)
     parser.add_argument('--inertial_to_combined', action='store_true', default=False)
 

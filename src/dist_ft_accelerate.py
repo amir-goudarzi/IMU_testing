@@ -277,7 +277,7 @@ def load_train_objs(cfg, args, training_priors=None):
     )
     model = load_model(args.finetune, args.eval, model, global_pool=cfg['model']['global_pool'], contains_omni=cfg['model']['omnivore_included'], args=args)
 
-    if is_multimodal:
+    if is_multimodal and not cfg['linprob']:
         model = custom_late_fusion(
             model=model,
             in_dim=768 + 1536,
@@ -310,7 +310,6 @@ def load_train_objs(cfg, args, training_priors=None):
             if  cfg['linprob']:
                 no_weight_decay_list = lrd.linprob_parse_omni_late_fusion(model, no_weight_decay_list)
 
-    optim
     param_groups = lrd.param_groups_lrd(model, args.weight_decay,
         no_weight_decay_list=no_weight_decay_list,
         layer_decay=args.layer_decay

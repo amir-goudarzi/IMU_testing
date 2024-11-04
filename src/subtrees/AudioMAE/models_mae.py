@@ -34,7 +34,7 @@ class MaskedAutoencoderViT(nn.Module):
                  audio_exp=False, alpha=0.0, temperature=.2, mode=0, contextual_depth=8,
                  use_custom_patch=False, split_pos=False, pos_trainable=False, use_nce=False, beta=4.0, decoder_mode=0,
                  mask_t_prob=0.6, mask_f_prob=0.5, mask_2d=False,
-                 epoch=0, no_shift=False, contains_omni=False, contains_i3d=False,
+                 epoch=0, no_shift=False, contains_omni=False, contains_i3d=False, i3d_rgb=False,
                  extract_feats=False
                  ):
         super().__init__()
@@ -87,7 +87,10 @@ class MaskedAutoencoderViT(nn.Module):
         if contains_omni:
             self.decoder_embed = nn.Linear(embed_dim + 1536, decoder_embed_dim, bias=True)
         elif contains_i3d:
-            self.decoder_embed = nn.Linear(embed_dim + 2048, decoder_embed_dim, bias=True)
+            if i3d_rgb:
+                self.decoder_embed = nn.Linear(embed_dim + 1024, decoder_embed_dim, bias=True)
+            else:
+                self.decoder_embed = nn.Linear(embed_dim + 2048, decoder_embed_dim, bias=True)
         else:
             self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)
 

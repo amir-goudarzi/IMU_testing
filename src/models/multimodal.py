@@ -29,7 +29,18 @@ def create_late_fusion(encoders: nn.ModuleDict, in_dim: int, num_classes: int, h
 
 def custom_late_fusion(model: VisionTransformer, in_dim: int, num_classes: int, hidden_dims: List[int]) -> LateFusion:
     '''
-    function to create the late fusion model
+    It adds a MLP on top of the model to perform the classification task. Even though it is written "late fusion",
+    the fusion happens between the features and not between logits.
+    
+    Args:
+    - model: VisionTransformer model
+    - in_dim: input dimension of the model
+    - num_classes: number of classes
+    - hidden_dims: list of hidden dimensions for the MLP
+
+    Returns:
+    - model: LateFusion model
+
     '''
     # define the multimodal model
     fusion = ConcatFusionModule()

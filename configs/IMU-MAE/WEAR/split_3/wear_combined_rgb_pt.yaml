@@ -1,0 +1,64 @@
+task_name: "imu_i3d"
+dataset: "wear"
+mean_std: {
+  save_path: None,
+}
+
+dataset: {
+  src_dir: "/data2/WEAR",
+  annotations: "/data2/WEAR/annotations",
+  filename: "wear_split_3.json",
+  i3d: True,
+  rgb: True,
+}
+
+mean_std_path: './data/WEAR/mean_std/split_3'
+
+spectrogram_params: {
+  sec_2: {
+    128x320: {
+      downsampling_rate: 50,
+      window_size: 2,
+      n_fft: 256,
+      win_length: 24,
+      hop_length: 1,
+      sampling_rate: 50,
+      resizes: !!python/tuple [128, 320],
+      temporal_points: 160,
+      transforms: null,
+      is_train: False, #Determines if to use SpecAugment
+      mean_std_path: './data/WEAR/mean_std/split_3'
+    }
+  }
+}
+
+model: {
+  name: 'mae_vit_base_patch',
+  in_chans: 12,
+  # embed_dim: 768,
+  # depth: 12,
+  # mask_ratio: 0.9,
+  mask_2d: False,
+  # mask_t_prob: 0.2,
+  # mask_f_prob: 0.2,
+  # mixup: 0.5,
+  # drop_path: 0.1,
+  # global_pool: True,
+  # pretrain: False,
+  use_custom_patch: False,
+  # classification: False,
+  alpha: 0.9,
+  mode: 0,
+  split_pos: False,
+  pos_trainable: False,
+  decoder_mode: 1,
+  no_shift: False,
+  use_nce: False,
+  norm_pix_loss: True,
+  audio_exp: False,
+  contains_i3d: True,
+  i3d_rgb: True,
+  128x320: {
+    patch_size: !!python/tuple [16, 16],
+  },
+}
